@@ -1,377 +1,304 @@
-# Theory behind the demonstrations
+# Theory behind the examples
 
-The Python Machine Learning Specialization defines the topics. These notes use
-small fixtures and consistent Ruby shapes rather than notebook state or estimator
-APIs. [Course map](course-map.md) identifies the source notebooks; the runnable
-files are the primary explanation, not black-box implementations of these notes.
+The Python specialization defines the applications and training configurations.
+Each link below points at runnable code. **Ruby** denotes explicit mathematics;
+**library** denotes the original estimator or training engine through PyCall.
 
-## Shapes and numerical conventions
+## 1. Linear regression — Ruby
 
-- A dataset is an array of `m` rows, each with `n` features; targets have `m` entries.
-- Regression weights have length `n`; the intercept is a separate scalar.
-- A dense layer stores `weights[output_neuron][input_feature]`, plus one bias per
-  output. That orientation is the transpose of some NumPy course examples.
-- Standardization uses population variance, dividing by `m`, matching NumPy's
-  default. Constant columns use scale one and therefore transform to zero.
-- Linear regression and neural squared-error objectives use **half** squared
-  error. `NumericTools.mse` reports ordinary MSE. The factor of two changes the
-  gradient/learning-rate convention, not the optimum.
-- L2 for ordinary regression and neural networks is `λ Σw²/(2m)`. Matrix
-  factorization intentionally uses the course's **summed** observed-rating loss
-  and `λ Σw²/2`. Neither penalizes biases. XGBoost uses its own tree objective.
-- Random initialization and data shuffling receive explicit seeded generators.
-
-## 1. Linear regression and gradient descent
-
-Prediction is `f(x)=w·x+b`. Minimize empirical risk:
+For observation `x`, `f(x)=w·x+b`. Batch gradient descent minimizes:
 
 ```text
-J(w,b) = (1 / 2m) Σ_i (f(x_i) - y_i)²
-∂J/∂w_j = (1/m) Σ_i (f(x_i)-y_i) x_ij
-∂J/∂b   = (1/m) Σ_i (f(x_i)-y_i)
-w ← w - α ∇w J       b ← b - α ∂J/∂b
+J = Σ_i (f(x_i)-y_i)² / (2m)
+dw_j = Σ_i (f(x_i)-y_i)*x_ij / m
+db = Σ_i (f(x_i)-y_i) / m
+w ← w-α*dw; b ← b-α*db
 ```
 
-Compute both gradients from the old parameters before changing either. On the
-shared line, the initial residuals are `[-1,-3,-5,-7]`, so the initial slope and
-bias gradients are `-8.5` and `-4`. With `α=0.05`, the first update is `w=0.425`,
-`b=0.2`; the demo prints exactly this arithmetic.
+Compute both gradients using the same old parameters. One and multiple features
+use the same equations. The executable fits the actual restaurant-profit data.
 
-Batch GD averages every training row before an update. SGD updates after each
-shuffled observation and therefore follows a noisy, order-dependent trajectory.
-A decreasing learning rate reduces late oscillations. Vectorized arithmetic and
-loops express the same gradient; Ruby arrays keep the operations inspectable.
+[Batch regression](../supervised/linear_regression.rb).
 
-Files: [batch/multiple regression](../supervised/linear_regression.rb),
-[SGD](../supervised/stochastic_gradient_descent.rb).
+## 2. Scaling, polynomial features and library regressors
 
-## 2. Least squares, scaling and engineered features
+Fit `μ_j` and population standard deviation `σ_j` on the training observations;
+transform using `(x_j-μ_j)/σ_j`. Reuse those statistics for later observations.
 
-Adding a column of ones gives a design matrix `A` that includes the bias.
-Stationarity yields `(AᵀA)θ=Aᵀy`. The example solves that system with pivoted
-elimination; it does not explicitly invert a matrix. Singular inputs are rejected.
-This educational normal-equation route is not a numerical replacement for
-production QR/SVD least squares: `AᵀA` worsens conditioning.
+Polynomial regression changes the features, not the linear prediction equation.
+The course's quadratic/cosine experiments show why powers need scaling. For two
+inputs, all monomials through degree six give 27 features plus a separate bias.
 
-Unequal feature scales stretch loss contours and can make a useful learning rate
-impossible. Compute `z_j=(x_j-μ_j)/σ_j`, using statistics fitted only on training
-rows. Transform validation/test rows with those same statistics; fitting again
-leaks information and changes the coordinate system.
+OLS stationarity is `(AᵀA)θ=Aᵀy`, with a constant column in `A`. The Python course
+uses sklearn `LinearRegression`; this repository retains that estimator rather
+than coding an inverse. Its `SGDRegressor` lab also retains the actual estimator,
+including source defaults for penalty and convergence. Those defaults are not
+silently replaced by a homemade per-example update schedule.
 
-Polynomial regression is still linear in its **parameters**. Replacing `x` with
-`[x,x²,...]` expands the hypothesis space without changing the linear solver.
-Two-variable monomials include interactions, not just independent powers. With
-degree two, the map is `[x1,x2,x1²,x1*x2,x2²]`. The sixth-degree map has 27 entries
-plus the separately held bias. Scaling is especially important after expansion.
+[Ruby scaling](../supervised/feature_scaling.rb),
+[Ruby feature engineering](../supervised/polynomial_regression.rb),
+[library SGD](../supervised/stochastic_gradient_descent.rb),
+[library OLS](../supervised/normal_equation.rb).
 
-Files: [normal equations](../supervised/normal_equation.rb),
-[scaling](../supervised/feature_scaling.rb),
-[polynomial regression](../supervised/polynomial_regression.rb),
-[polynomial classification](../supervised/regularized_logistic_regression.rb).
+## 3. Logistic regression — Ruby, with a separate library lab
 
-## 3. Logistic regression and stable cross-entropy
-
-For a binary target, model `p(y=1|x)=σ(z)`, where `z=w·x+b` and
-`σ(z)=1/(1+exp(-z))`. The Bernoulli negative log likelihood is:
+`p(y=1|x)=σ(w·x+b)`, where `σ(z)=1/(1+exp(-z))`. Bernoulli cross-entropy:
 
 ```text
-L(z,y) = -y log σ(z) - (1-y) log(1-σ(z))
-       = softplus(z) - y*z
-softplus(z) = max(z,0) + log(1+exp(-|z|))
-∂L/∂z = σ(z)-y
+L(z,y) = softplus(z)-y*z
+softplus(z) = max(z,0)+log(1+exp(-abs(z)))
+dL/dz = σ(z)-y
 ```
 
-The stable logits form avoids `log(0)` and exponential overflow. A branch-stable
-sigmoid avoids computing `exp(1000)`. The remaining weight/bias gradients have
-the same residual shape as linear regression, replacing `f-y` with `p-y`.
+This logits formulation avoids `log(0)` and exponential overflow. The batch
+weight/bias gradients have the linear-regression form with residual `p-y`.
+A .5 decision threshold corresponds to `w·x+b=0`. Monomial features make that
+boundary nonlinear in the original two-dimensional measurements. The executable
+applications are the original admissions and microchip problems.
 
-The 0.5 classification boundary is `w·x+b=0`. Changing the threshold changes the
-prediction decision, not the fitted objective. A polynomial feature map makes a
-nonlinear input-space boundary linear in expanded feature space; the circle
-example demonstrates the need rather than merely plotting an arbitrary curve.
+[Ruby logistic regression](../supervised/logistic_regression.rb),
+[Ruby microchip classifier](../supervised/regularized_logistic_regression.rb),
+[actual sklearn optional lab](../supervised/sklearn_logistic_regression.rb).
 
-Files: [logistic regression](../supervised/logistic_regression.rb),
-[regularized nonlinear classifier](../supervised/regularized_logistic_regression.rb).
+## 4. Regularization conventions
 
-## 4. Regularization, model evaluation and bias/variance
+The handwritten linear/logistic assignments add `λ*Σw²/(2m)` and `λ*w/m` to the
+cost and weight gradient. Do not penalize the bias. Keras `L2(λ)` instead adds
+`λ*Σw²`; the collaborative-filtering assignment uses `λ*Σw²/2` with an
+**unnormalized** observed-rating loss. These coefficients are not interchangeable.
+The code retains each source convention.
 
-L2 adds `λ||w||²/(2m)` to the training objective and `λw/m` to its gradient.
-The intercept is excluded: regularizing it would penalize the overall target
-level, not only model complexity. The exact ridge stationary equations add `λ`
-to the weight diagonal of `AᵀA`, not its intercept entry.
+[Explicit penalties](../supervised/regularization.rb).
 
-Training error measures fit to data used for learning. Validation chooses degree,
-penalty or architecture; test data estimates performance after that choice.
-Measure the **unpenalized data error** when comparing train/CV curves. A penalty
-is a training preference, not an extra error on a held-out observation.
+## 5. Evaluation and bias/variance — Ruby metrics, library fits
 
-- High training and validation error suggest a restrictive hypothesis/high bias.
-- Low training error and a substantial validation gap suggest high variance.
-- More data does not give a line the ability to represent a quadratic.
-- Lowest training error need not select the best model: a high-degree interpolant
-  fits alternating noise, while the quadratic generalizes better.
-- A larger neural network can memorize corrupted labels. Validation, not size or
-  confidence, decides which candidate to keep.
+Train models on training observations. Use validation error to select degree,
+regularization or capacity. Evaluate the selected model on held-out test data.
+Compare unpenalized prediction errors, not training objectives containing L2.
+The course's regression evaluation uses half-MSE; classification uses the
+fraction of wrong labels. Some Keras models train with ordinary MSE: distinguish
+the training loss from the reported evaluation convention.
 
-Classification error is incorrect predictions divided by the number of examples.
-Accuracy alone can obscure rare-event failure. `precision=TP/(TP+FP)`,
-`recall=TP/(TP+FN)`, `F1=2PR/(P+R)`; undefined ratios use zero here. The metric demo
-shows equal 0.9 accuracy for an all-negative detector and one that finds the only
-positive, but their recall/F1 differ.
+High train/CV error suggests high bias. A low training error with a large CV gap
+suggests high variance. More observations cannot give a linear hypothesis the
+ability to represent a quadratic. The source sample-size/degree/lambda grids,
+noisy-quadratic generator, six-class generator and diagnostic CSVs are retained.
 
-Files: [L2](../supervised/regularization.rb), [evaluation](../evaluation/metrics.rb),
-[selection](../evaluation/model_selection.rb),
+For rare events, `precision=TP/(TP+FP)`, `recall=TP/(TP+FN)` and
+`F1=2PR/(P+R)`; undefined divisions return zero. Accuracy can conceal a detector
+that predicts no anomalies.
+
+[Metrics](../evaluation/metrics.rb), [selection](../evaluation/model_selection.rb),
 [learning curves](../evaluation/learning_curves.rb),
-[neural selection](../evaluation/neural_model_selection.rb).
+[diagnostic CSVs](../evaluation/diagnosing_bias_variance.rb),
+[optional evaluation](../evaluation/optional_model_evaluation.rb),
+[neural advice](../evaluation/neural_model_selection.rb).
 
-## 5. Dense layers, sigmoid, ReLU and softmax
+## 6. Dense layers, activations and original networks
 
-A layer computes `z_j=Σ_k W_jk*a_k+b_j`, then applies an activation. Without
-nonlinear activations, stacked affine layers collapse into a single affine map.
-ReLU is `max(0,z)`; two units `ReLU(x)+ReLU(-x)` already construct absolute value.
-Sigmoid produces one binary probability.
+A layer computes `z_j=Σ_k W_jk*a_k+b_j`, followed by an activation. Without a
+nonlinearity, stacked affine layers collapse to one affine map. Sigmoid gives a
+binary probability. ReLU, `max(0,z)`, introduces hinges; the CLI version retains
+the original adjustable three-unit experiment.
 
-For `K` mutually exclusive classes, use logits `z_1...z_K`:
+For mutually exclusive classes:
 
 ```text
-p_j = exp(z_j - max(z)) / Σ_k exp(z_k - max(z))
-L(z,c) = logsumexp(z) - z_c
-∂L/∂z_j = p_j - 1[j=c]
+p_j = exp(z_j-max(z)) / Σ_k exp(z_k-max(z))
+L(z,c) = logsumexp(z)-z_c
+dL/dz_j = p_j-1[j=c]
 ```
 
-Subtracting a common constant preserves probabilities. Keeping loss in logit
-space is the same numerical motivation as the course's `from_logits=True`, but
-there is no framework here. Prediction uses argmax; integer class labels are
-expanded to a one-hot target for the derivative.
+A common logit shift preserves probabilities. Keras training uses linear output
+logits and `from_logits: true` for multiclass CE; prediction uses argmax.
 
-The course's binary digit and coffee examples become small sigmoid networks; its
-multiclass digit/blob examples become a ReLU/softmax network. These are different
-fixtures and widths, not different learning algorithms.
+The original digit models remain 400→25→15→1 and 400→25→15→10. The original
+coffee experiment remains 2→3→1 with its data generator, normalization and tiled
+training data. Ruby dense inference is compared to actual trained Keras weights.
 
-Files: [dense layer](../neural_networks/dense_layer.rb),
+[Dense inference](../neural_networks/dense_layer.rb),
 [ReLU](../neural_networks/relu.rb), [softmax](../neural_networks/softmax.rb),
-[binary](../neural_networks/binary_classification.rb),
-[multiclass](../neural_networks/multiclass_classification.rb).
+[binary digits](../neural_networks/binary_classification.rb),
+[multiclass digits](../neural_networks/multiclass_classification.rb),
+[coffee](../neural_networks/coffee_roasting.rb),
+[optional four-class model](../neural_networks/multiclass_blobs.rb).
 
-## 6. Backpropagation, initialization and gradient checking
+## 7. Backpropagation and numerical derivatives — Ruby extensions
 
-Cache activations and preactivations during the forward pass. For fused
-sigmoid/BCE, softmax/CE, or linear/half-squared-error, the output preactivation
-delta is `prediction-target`. For a hidden layer:
+These expose mathematics underlying the course's training engines; they do not
+replace its TensorFlow assignments. Cache activations and logits, then apply:
 
 ```text
-δ_l = (W_(l+1)ᵀ δ_(l+1)) elementwise g'(z_l)
-∂L/∂W_l = δ_l outer_product a_(l-1)
-∂L/∂b_l = δ_l
+δ_l = (W_(l+1)ᵀ*δ_(l+1)) .* g'(z_l)
+dL/dW_l = δ_l outer_product a_(l-1)
+dL/db_l = δ_l
 ```
 
-Sigmoid derivative is `a*(1-a)`; ReLU derivative is one above zero, zero below.
-At its nondifferentiable zero kink this implementation chooses zero. Batch-average
-sample gradients and add weight-only L2 terms. `Network#backward` accepts a cached
-forward pass and a derivative with respect to output **logits**, allowing composed
-objectives to reuse the same chain rule.
+Fused sigmoid/BCE and softmax/CE start with output-logit derivative `prediction-target`.
+Average per-observation derivatives, then add the appropriate weight-only L2.
+Nonidentical random initialization breaks hidden-neuron symmetry.
 
-Uniform fan-in/fan-out scaled random weights break symmetry. Zero initialization
-would make hidden neurons learn identical features. The two-tower example also
-keeps its initial output embeddings away from the zero-norm normalization kink.
+Central differences `(J(θ+εe_j)-J(θ-εe_j))/(2ε)` independently approximate a
+partial derivative. Avoid ReLU kinks and excessively small ε. The default check
+samples parameters throughout both original digit architectures on real images;
+the checker also accepts an explicit index list or the full parameter set.
 
-Central differences `(J(θ+εe_j)-J(θ-εe_j))/(2ε)` independently approximate every
-partial. Finite differences balance truncation error against floating-point
-roundoff and should avoid activation kinks. The executable check covers every
-weight/bias for binary, categorical and regression outputs with L2; the
-recommenders independently check their composed gradients too.
+[Backpropagation](../neural_networks/backpropagation.rb),
+[gradient checks](../neural_networks/gradient_check.rb).
 
-Files: [backpropagation](../neural_networks/backpropagation.rb),
-[numerical checks](../neural_networks/gradient_check.rb).
-
-## 7. Adam
-
-Adam maintains exponentially decayed first and second gradient moments:
+## 8. Adam — explicit mathematics and actual library training
 
 ```text
-m_t = β1*m_(t-1) + (1-β1)*g_t
-v_t = β2*v_(t-1) + (1-β2)*g_t²
-m_hat = m_t/(1-β1^t)       v_hat = v_t/(1-β2^t)
-θ_t = θ_(t-1) - α*m_hat/(sqrt(v_hat)+ε)
+m_t = β1*m_(t-1)+(1-β1)*g_t
+v_t = β2*v_(t-1)+(1-β2)*g_t²
+m_hat = m_t/(1-β1^t); v_hat = v_t/(1-β2^t)
+θ_t = θ_(t-1)-α*m_hat/(sqrt(v_hat)+ε)
 ```
 
-Bias correction compensates for moments initialized at zero. Each trainable model
-owns its own optimizer state; reusing moments across unrelated models is invalid.
-A custom loop is genuinely from scratch here because both derivatives and updates
-are visible, unlike a loop delegating them to `GradientTape` and Keras.
+Bias correction compensates for zero-initialized moments. Optimizer state belongs
+to a particular parameter vector, not every model in a process. The Ruby
+extension traces moments on the original digit-network gradient. Course training
+uses the actual Keras Adam implementation and each notebook's learning rate;
+the extension is not a claim of bit-for-bit Keras optimizer compatibility.
 
-File: [Adam](../neural_networks/adam.rb).
+[Adam extension](../neural_networks/adam.rb).
 
-## 8. Decision trees and random forests
+## 9. Trees and forests
 
-Entropy `H=-Σp log2(p)` measures label uncertainty. Splitting reduces it by
-`H(parent) - n_left/n * H(left) - n_right/n * H(right)`. Candidate thresholds lie
-between distinct sorted numeric feature values; a binary feature therefore uses
-0.5. Recurse on the greatest positive gain. Pure labels, maximum depth, a
-minimum-child-size restriction or no useful split stop the tree. Leaves retain
-class counts for majority predictions and probabilities.
+Entropy is `H=-Σp*log2(p)`. Information gain subtracts weighted child entropy from
+parent entropy. The handwritten mushroom assignment evaluates the actual ten
+binary-feature observations and recurses on informative splits.
 
-A random forest trains trees on **bootstrap samples** (sampling rows with
-replacement) and samples candidate features independently at each split. Average
-tree leaf probabilities for prediction. Out-of-bag evaluation uses only trees
-that did not see a given row in their bootstrap. It is not the training vote and
-is noisy on this deliberately tiny dataset.
+Random forests combine bootstrapped trees and randomized candidate features.
+The heart-data lab uses sklearn `DecisionTreeClassifier` and
+`RandomForestClassifier`, not the handwritten mushroom learner. Preserve the
+categorical one-hot encoding, held-out split and parameter sweeps.
 
-Files: [tree](../trees/decision_tree.rb), [forest](../trees/random_forest.rb).
+[Ruby tree](../trees/decision_tree.rb), [library forest](../trees/random_forest.rb).
 
-## 9. Second-order boosted trees / XGBoost
+## 10. XGBoost — actual library
 
-For binary logistic boosting, keep an additive score `F(x)` and probability
-`σ(F(x))`. At each round the first/second derivatives are `g_i=p_i-y_i`,
-`h_i=p_i*(1-p_i)`. A tree approximates the loss through these derivatives:
+For additive logistic score `F(x)`, let `p=σ(F)`, `g=p-y` and `h=p*(1-p)`.
+The local second-order tree objective gives leaf weight `-G/(H+λ)` and split gain:
 
 ```text
-leaf weight = -G/(H+λ)
-G = Σ_leaf g_i       H = Σ_leaf h_i
-split gain = 1/2 [G_L²/(H_L+λ) + G_R²/(H_R+λ) - G²/(H+λ)] - γ
-F_new(x) = F_old(x) + learning_rate * tree(x)
+1/2 * [G_L²/(H_L+λ)+G_R²/(H_R+λ)-G²/(H+λ)]-γ
 ```
 
-Here `λ` regularizes leaf weights and `γ` charges an extra split/leaf. Reject
-children with too little Hessian mass. Start from the class-prior log odds, add
-small trees, and monitor validation loss for early stopping. Restore the best
-prefix, not the final worse round. The example checks restoration explicitly.
+Shrinkage adds only a learning-rate fraction of each new tree. Early stopping
+monitors held-out loss rather than the training fit. The runnable heart-data
+example invokes the real XGBoost engine with the original training setup; these
+equations explain that engine, not a substitute restricted boosting implementation.
 
-This is the mathematical core of the course's XGBoost model, implemented by exact
-greedy search on tiny data. It is not a compatibility implementation of the
-external library, its histogram quantization, missing-value routing, subsampling,
-distributed execution or GPU optimizations.
+[XGBoost](../trees/xgboost.rb).
 
-File: [XGBoost](../trees/xgboost.rb).
+## 11. K-means and image compression — Ruby
 
-## 10. K-means and palette compression
+Alternate nearest-centroid assignments and per-cluster means to minimize squared
+distance. Each nonempty-cluster mean minimizes its assigned-point objective;
+initialization affects the local optimum. Empty clusters retain their old center.
+Run the original 10 updates even if assignments stabilize earlier.
 
-Minimize mean squared distance to the assigned centroid. Assignment chooses the
-nearest current center; updating a nonempty center to its assigned mean is the
-optimal least-squares representative. Alternating these steps cannot increase the
-objective, but can converge to a local optimum. Random initialization selects
-actual observations; empty clusters retain their existing center here.
+The first application uses the actual 300 points and three source initial centers.
+The second treats the original bird's RGB pixels as 3D observations and learns a
+16-color palette. Reconstruction looks up each pixel's assigned centroid. Ideal
+palette/index storage is not the same as compressed PNG file size.
 
-RGB pixels are points in three dimensions. Replace them with centroid indices to
-quantize the palette; reconstruct pixels by looking up the selected centroid.
-The reported storage comparison assumes 8-bit RGB palette entries and ideal
-one-bit indices for two colors, excluding file headers. It is a conceptual
-encoding calculation, not a generated PNG compression benchmark.
+[K-means](../unsupervised/k_means.rb), [bird reconstruction](../unsupervised/image_compression.rb).
 
-Files: [K-means](../unsupervised/k_means.rb),
-[palette reconstruction](../unsupervised/image_compression.rb).
+## 12. Gaussian anomaly detection — Ruby
 
-## 11. Gaussian anomaly detection
-
-Fit each feature's mean and population variance on predominantly normal examples.
-The diagonal-covariance model assumes feature independence:
+Fit feature means and population variances on predominantly normal examples.
+Assuming independent feature densities:
 
 ```text
-log p(x) = -1/2 Σ_j [log(2πσ_j²) + (x_j-μ_j)²/σ_j²]
-anomaly if log p(x) < threshold
+log p(x) = -1/2 * Σ_j [log(2πσ_j²)+(x_j-μ_j)²/σ_j²]
+anomaly if p(x)<epsilon
 ```
 
-A variance floor handles constant features; log densities avoid multiplying many
-small numbers into underflow. Density alone does not choose the anomaly threshold.
-Choose it using labeled validation examples and the desired precision/recall
-criterion. The example enumerates score boundaries and maximizes validation F1.
-Gaussianity/independence are assumptions to check, not guarantees from the model.
+Log densities avoid underflow. The original 1000-step probability-threshold
+search maximizes validation F1 on each actual server dataset. Labels choose the
+threshold; they do not fit the Gaussian. Independence and Gaussianity remain
+model assumptions. A small variance floor handles constant inputs.
 
-File: [anomaly detection](../unsupervised/anomaly_detection.rb).
+[Anomaly detection](../unsupervised/anomaly_detection.rb).
 
-## 12. Collaborative filtering
+## 13. Collaborative filtering — explicit cost, TensorFlow training
 
-Ratings are a sparse movie-by-user matrix. Let `R_ij` indicate an observed rating.
-Subtract each movie's observed mean; jointly learn movie factors `x_i`, user
-factors `w_j` and user biases `b_j`:
+`R_ij` marks observed ratings. Subtract each movie's observed mean and learn movie
+factors `x_i`, user factors `w_j` and user biases `b_j`:
 
 ```text
-e_ij = x_i·w_j + b_j - Ynorm_ij
-J = 1/2 Σ_observed e_ij² + λ/2 (Σ||x_i||² + Σ||w_j||²)
-dx_i = Σ_observed_users e_ij*w_j + λ*x_i
-dw_j = Σ_observed_movies e_ij*x_i + λ*w_j
+e_ij = x_i·w_j+b_j-Ynorm_ij
+J = 1/2 * Σ_observed e_ij² + λ/2 * (Σ||x_i||²+Σ||w_j||²)
+dx_i = Σ_observed_users e_ij*w_j+λ*x_i
+dw_j = Σ_observed_movies e_ij*x_i+λ*w_j
 db_j = Σ_observed_movies e_ij
 ```
 
-A missing rating contributes nothing. It is not a dislike or a zero target.
-Restore movie means before reporting ratings; rank only unseen items. Low observed
-training error does not establish accuracy on missing cells, and unconstrained
-factorization can predict outside the original rating range.
+A missing rating is not a zero-valued target. Restore means before reporting
+ratings and exclude the new user's already-rated movies from recommendations.
+The scalar cost is explicit Ruby. The original full matrix trains using
+TensorFlow GradientTape/Adam, 100 factors and the notebook's personal ratings.
+Unconstrained predictions may exceed the original rating scale.
 
-The Python notebook delegates gradients to TensorFlow; this version supplies the
-analytic gradients and verifies every parameter independently.
+[Collaborative filtering](../recommenders/collaborative_filtering.rb).
 
-File: [collaborative filtering](../recommenders/collaborative_filtering.rb).
+## 14. Content-based recommendation — actual TensorFlow towers
 
-## 13. Neural content-based recommendation
+Separate 256→128→32 user/item networks produce embeddings normalized to unit
+length. Their dot product predicts a scaled rating; MSE trains both towers.
+Squared distance between movie embeddings supports similar-item retrieval,
+excluding the same movie itself. Real user/movie metadata supports both new-user
+and existing-user recommendations.
 
-Two separate networks map user features and movie features into a shared embedding
-space. Normalize both embeddings and score their dot product. Learn by rating
-error; the toy genre features provide a known cosine target. For raw vector `u`,
-normalized vector `u_hat`, counterpart `v_hat`, and score `s`:
+The source notebook fits the input StandardScalers before splitting aligned
+rows, then fits the target MinMaxScaler on the training targets. This repository
+preserves that workflow. Fitting input preprocessing before a held-out split
+leaks distribution information; a new experimental protocol should fit those
+scalers only on training data rather than silently relabel the source workflow.
 
-```text
-s = u_hat·v_hat
-dL/du = (s-y) * (v_hat - s*u_hat) / ||u||
-```
+[Content-based filtering](../recommenders/content_based_filtering.rb).
 
-The other tower has the symmetric derivative. Backpropagate both derivatives
-through the visible dense-network code. A small norm floor has its own linear
-clamped-branch derivative; initialization avoids its kink during numerical checks.
-Squared distance between learned normalized movie vectors supplies item-to-item
-similarity; self matches must be excluded when selecting a different similar item.
+## 15. Tabular policy iteration — Ruby
 
-The toy inputs already occupy a small common scale. With real course data, split
-aligned user/item/target rows before fitting input/target scalers; do not fit
-preprocessing on held-out observations.
-
-File: [two-tower model](../recommenders/content_based_filtering.rb).
-
-## 14. Tabular policy iteration
-
-An MDP specifies states, actions, rewards, transition probabilities and discount
-`γ`. For a fixed policy, repeatedly apply its Bellman expectation backup until
-values stabilize; greedily improve its actions; repeat until the policy stabilizes.
+For a known transition model:
 
 ```text
-Q(s,a) = R(s) + γ Σ_s' P(s'|s,a) V(s')
-V_policy(s) = Q(s, policy(s))
+Q(s,a) = R(s)+γ*Σ_s' P(s'|s,a)*V(s')
+V_policy(s) = Q(s,policy(s))
 policy_new(s) = argmax_a Q(s,a)
 ```
 
-This example follows the course helper's current-state reward convention:
-terminal values equal their rewards and terminal transition rows are zero.
-Interior stochastic-misstep rows sum to one. Check the final values against
-`V(s)=max_a Q(s,a)`. This is dynamic programming with a known transition model,
-not a sampled or neural Q-learning algorithm.
+Alternate policy evaluation and greedy improvement until stable. The original
+six-state helper uses current-state rewards, terminal values equal to terminal
+rewards and zero terminal transition rows. Interior transition rows sum to one,
+including stochastic missteps. This is dynamic programming, not sampled DQN.
 
-File: [state–action values](../reinforcement_learning/state_action_values.rb).
+[Policy iteration](../reinforcement_learning/state_action_values.rb).
 
-## 15. Deep Q-learning
+## 16. Deep Q-learning — actual LunarLander-v2
 
-DQN learns a Q function from transitions rather than using a known transition
-matrix. Sample experiences from a bounded replay buffer to reduce adjacent-sample
-correlation. Select random actions with probability `ε`; otherwise choose the
-largest online Q value. Form detached targets from a separate target network:
+Replay samples transitions to reduce adjacent-sample correlation. Epsilon-greedy
+behavior explores; a separate target network supplies bootstrapped targets:
 
 ```text
-y = r                               if genuinely terminal
-y = r + γ max_a Q_target(s',a)       otherwise
-L = 1/2 (Q_online(s,a)-y)²
+y = r + γ*(1-done)*max_a Q_target(s',a)
+L = mean((Q_online(s,a)-y)²)
 θ_online ← Adam(θ_online, gradient of L)
-θ_target ← (1-τ)*θ_target + τ*θ_online
+θ_target ← τ*θ_online+(1-τ)*θ_target
 ```
 
-Only the selected action contributes a delta; the other action targets equal their
-current online predictions. Target arrays are values, not differentiable nodes.
-A time-limit truncation does not silently become terminal. Soft target updates
-happen after replay minibatch optimization, as in the Python course helper.
+Only the selected action's prediction enters MSE. The target-network variables
+are not updated by the online optimizer. Both networks remain 8→64→64→4, with
+the actual Box2D observations, actions and rewards. Source defaults include
+replay 100000, batch 64, gamma .995, Adam .001, updates every four environment
+steps, tau .001 and epsilon decay .995/min .01.
 
-The course uses mean squared error; this laboratory uses half squared error,
-consistent with its visible regression/backprop convention. Network size, discount
-and training budget are adapted to the tiny problem, not claimed as LunarLander
-hyperparameters. The environment is a one-dimensional continuous corridor,
-**not** a physics port. Its two monotone terminal paths have exact discounted
-returns, giving a numerical oracle independent of the learned network.
+Gym .26 separates `terminated` and `truncated`; combining them preserves the
+older notebook's `done` mask. This is source behavior, not a claim that masking
+time limits is the preferred treatment in a newly designed RL experiment.
+The source maximum is 2000 episodes × 1000 steps, with its average-return stop.
+Short validation runs exercise learning; they do not prove a solved lander.
 
-File: [DQN](../reinforcement_learning/deep_q_learning.rb).
+[Deep Q-learning](../reinforcement_learning/deep_q_learning.rb).
