@@ -29,7 +29,7 @@ if __FILE__ == $PROGRAM_NAME
       features = PolynomialRegression.features(values, index == 3 ? 3 : 13)
       x = NumericTools.transform(features, NumericTools.fit_scaler(features))
     end
-    iterations = ENV.fetch("ML_ITERATIONS", budget).to_i
+    iterations = budget
     step("#{label}: #{iterations} iterations, alpha=#{rate}")
     w, b = LinearRegression.fit(x, y, rate: rate, iterations: iterations, trace_every: [iterations / 5, 1].max) { |i, _w, _b, cost, _dw, _db| note("iteration #{i}: cost=#{cost}") }
     raise "Polynomial fit became nonfinite" unless w.all?(&:finite?) && b.finite?

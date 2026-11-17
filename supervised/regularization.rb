@@ -4,13 +4,13 @@
 # Compare training fit with shrinkage. Smaller training error is not by itself
 # better generalization; held-out model selection is a separate example.
 # Run me: ruby supervised/regularization.rb
-require_relative "normal_equation"
+require_relative "linear_regression"
 require_relative "logistic_regression"
 if __FILE__ == $PROGRAM_NAME
   require_relative "../lib/course_data"
   include Style
   banner("Regularization", "original housing and microchip data · handwritten L2 objectives")
-  rows = CourseData.table(:houses, "data/houses.txt").drop(1)
+  rows = CourseData.table(:houses, "data/houses.txt", skip: 1)
   x = rows.map { |r| r.first(4) }
   y = rows.map(&:last)
   x = NumericTools.transform(x, NumericTools.fit_scaler(x))

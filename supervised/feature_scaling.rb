@@ -9,7 +9,7 @@ if __FILE__ == $PROGRAM_NAME
   require_relative "../lib/course_data"
   include Style
   banner("Feature Scaling", "course housing features · handwritten z-score normalization")
-  rows = CourseData.table(:houses, "data/houses.txt").drop(1)
+  rows = CourseData.table(:houses, "data/houses.txt", skip: 1)
   x = rows.map { |row| row.first(4) }
   y = rows.map(&:last)
   scaler = NumericTools.fit_scaler(x)
