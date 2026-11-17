@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
-# Regularized nonlinear logistic regression — map two features to monomials.
-# Degree d includes every x1^(i-j)*x2^j for i=1..d; bias stays separate.
-# A circle cannot be separated by one line, but x1²+x2² makes it linear in φ(x).
-# Run me: ruby supervised/regularized_logistic_regression.rb
+# Original microchip-quality assignment: all 118 measurements, monomials through
+# degree six, lambda .01, alpha .01 and 10000 handwritten gradient updates.
+# The bias remains separate and unpenalized.
 require_relative "logistic_regression"
 module RegularizedLogisticRegression
   module_function
@@ -13,21 +12,20 @@ module RegularizedLogisticRegression
   end
 end
 if __FILE__ == $PROGRAM_NAME
+  require_relative "../lib/course_data"
   include Style
-  banner("Regularized Logistic Regression", "polynomial feature map · nonlinear boundary")
-  x = [-1.5, -0.5, 0.5, 1.5].product([-1.5, -0.5, 0.5, 1.5])
-  y = x.map { |a, b| a * a + b * b < 1 ? 1 : 0 }
-  linear_w, linear_b = LogisticRegression.fit(x, y)
-  linear = x.map { |r| LogisticRegression.probability(r, linear_w, linear_b) >= 0.5 ? 1 : 0 }
-  expanded = RegularizedLogisticRegression.map_features(x, degree: 2)
-  scaler = NumericTools.fit_scaler(expanded)
-  features = NumericTools.transform(expanded, scaler)
-  w, b = LogisticRegression.fit(features, y, l2: 0.1, iterations: 2000) { |i, weights, bias, cost| step("it #{i}: penalized BCE=#{cost.round(6)} ||w||²=#{weights.sum { |v| v * v }.round(4)} b=#{bias.round(4)}") if i <= 2 || (i % 500).zero? }
-  predicted = features.map { |r| LogisticRegression.probability(r, w, b) >= 0.5 ? 1 : 0 }
-  step("linear accuracy #{NumericTools.accuracy(y, linear)}; quadratic accuracy #{NumericTools.accuracy(y, predicted)}")
-  x.each_index { |i| note("#{vector(x[i])} → features #{vector(expanded[i])} class=#{predicted[i]} target=#{y[i]}") }
-  raise "nonlinear boundary missing" unless predicted == y && NumericTools.accuracy(y, linear) < 1
-  raise "sixth-degree mapping width differs" unless RegularizedLogisticRegression.map_features([[1.0, 2.0]])[0].size == 27
+  banner("Regularized Logistic Regression", "course microchip tests · degree six · handwritten")
+  raw, y = CourseData.supervised(:logistic, "data/ex2data2.txt")
+  x = RegularizedLogisticRegression.map_features(raw, degree: 6)
+  rng = Random.new(1)
+  initial = Array.new(x.first.size) { rng.rand - 0.5 }
+  w, b = LogisticRegression.fit(x, y, rate: 0.01, iterations: 10_000, l2: 0.01, initial_weights: initial, initial_bias: 1.0) do |i, _weights, _bias, cost|
+    step("iteration #{i}: regularized cost=#{cost}") if i <= 3 || (i % 2000).zero?
+  end
+  predicted = x.map { |row| LogisticRegression.probability(row, w, b) >= 0.5 ? 1 : 0 }
+  accuracy = NumericTools.accuracy(y, predicted)
+  step("#{raw.size} microchips; #{w.size} mapped features plus bias; training accuracy #{accuracy}")
+  raise "Microchip classifier failed" unless accuracy >= 0.75
 
-  ok("the same logistic objective learns a circular boundary through explicit features")
+  ok("sixth-degree model fitted to the original test measurements")
 end

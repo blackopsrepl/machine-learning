@@ -28,25 +28,4 @@ module NumericTools
     centers, scales = scaler
     rows.map { |row| row.each_with_index.map { |x, j| (x - centers[j]) / scales[j] } }
   end
-
-  # Partial-pivoted elimination for small nonsingular systems, not an inverse.
-  def solve(matrix, rhs)
-    n = rhs.size
-    a = matrix.each_with_index.map { |row, i| row.map(&:to_f) + [rhs[i].to_f] }
-    n.times do |column|
-      pivot = (column...n).max_by { |row| a[row][column].abs }
-      raise ArgumentError, "singular system" if a[pivot][column].abs < 1e-12
-
-      a[column], a[pivot] = a[pivot], a[column]
-      divisor = a[column][column]
-      (column..n).each { |j| a[column][j] /= divisor }
-      n.times do |row|
-        next if row == column
-
-        factor = a[row][column]
-        (column..n).each { |j| a[row][j] -= factor * a[column][j] }
-      end
-    end
-    a.map(&:last)
-  end
 end

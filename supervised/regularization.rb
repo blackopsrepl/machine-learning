@@ -7,21 +7,23 @@
 require_relative "normal_equation"
 require_relative "logistic_regression"
 if __FILE__ == $PROGRAM_NAME
+  require_relative "../lib/course_data"
   include Style
-  banner("Regularization", "penalize weights, not the intercept")
-  norms = [0.0, 20.0].map do |lambda|
-    w, b = NormalEquation.fit(Problem.line, Problem.line_targets, l2: lambda)
-    step(format("linear λ=%4.1f w=% .4f b=% .4f data J=%.5f", lambda, w[0], b, LinearRegression.loss(Problem.line, Problem.line_targets, w, b)))
-    w.sum { |v| v * v }
+  banner("Regularization", "original housing and microchip data · handwritten L2 objectives")
+  rows = CourseData.table(:houses, "data/houses.txt").drop(1)
+  x = rows.map { |r| r.first(4) }
+  y = rows.map(&:last)
+  x = NumericTools.transform(x, NumericTools.fit_scaler(x))
+  [0.0, 1.0, 10.0].each do |lambda|
+    w, b = LinearRegression.fit(x, y, rate: 0.1, iterations: 1000, l2: lambda)
+    step("housing lambda=#{lambda}: data cost=#{LinearRegression.loss(x, y, w, b)}; weights=#{vector(w)}")
   end
-  raise "L2 did not shrink" unless norms[1] < norms[0]
-
-  [0.0, 10.0].each do |lambda|
-    w, b = LogisticRegression.fit(Problem.binary, Problem.binary_targets, l2: lambda)
-    step(format("logistic λ=%4.1f w=% .4f b=% .4f", lambda, w[0], b))
+  chips, labels = CourseData.supervised(:logistic, "data/ex2data2.txt")
+  require_relative "regularized_logistic_regression"
+  expanded = RegularizedLogisticRegression.map_features(chips)
+  [0.0, 1.0, 10.0].each do |lambda|
+    w, b = LogisticRegression.fit(expanded, labels, iterations: 1000, rate: 0.01, l2: lambda)
+    step("microchip lambda=#{lambda}: objective=#{LogisticRegression.loss(expanded, labels, w, b, l2: lambda)}")
   end
-  w, b = NormalEquation.fit([[0.0], [0.0]], [7.0, 7.0], l2: 10)
-  raise "intercept penalized" unless b == 7.0 && w == [0.0]
-
-  ok("L2 shrinks the slope; an unpenalized constant prediction remains seven")
+  ok("linear and logistic penalties operate on the original feature matrices")
 end

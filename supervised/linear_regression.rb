@@ -1,11 +1,9 @@
 # frozen_string_literal: true
 
-# Linear regression — y_hat = w·x + b, J = Σ(y_hat-y)²/(2m).
-# Batch gradients average residual*x and residual; update all parameters together.
-# The exact line y=1+2x makes convergence and the intercept visible by eye.
-# Run me: ruby supervised/linear_regression.rb
+# Linear regression — y_hat=w·x+b, half mean squared error and simultaneous
+# batch-gradient updates. The demonstration uses the original 97 restaurant
+# population/profit observations, alpha .01 and 1500 iterations.
 require_relative "../lib/style"
-require_relative "../lib/problem"
 require_relative "../lib/numeric"
 
 module LinearRegression
@@ -23,33 +21,28 @@ module LinearRegression
     [dw, NumericTools.mean(residuals)]
   end
 
-  def fit(x, y, rate: 0.05, iterations: 1000, l2: 0.0)
+  def fit(x, y, rate: 0.05, iterations: 1000, l2: 0.0, trace_every: 1)
     weights, bias = Array.new(x.first.size, 0.0), 0.0
     iterations.times do |i|
       dw, db = gradients(x, y, weights, bias, l2: l2)
       weights = weights.zip(dw).map { |w, g| w - rate * g }
       bias -= rate * db
-      yield i + 1, weights.dup, bias, loss(x, y, weights, bias, l2: l2), dw, db if block_given?
+      yield i + 1, weights.dup, bias, loss(x, y, weights, bias, l2: l2), dw, db if block_given? && ((i % trace_every).zero? || i == iterations - 1)
     end
     [weights, bias]
   end
 end
 
 if __FILE__ == $PROGRAM_NAME
+  require_relative "../lib/course_data"
   include Style
-  banner("Linear Regression", "batch gradient descent · exact line")
-  x, y = Problem.line, Problem.line_targets
-  w, b = LinearRegression.fit(x, y) do |i, weights, bias, cost, dw, db|
-    step(format("it %-4d w=% .4f b=% .4f J=%.6f  gradients=(%.4f, %.4f)", i, weights[0], bias, cost, dw[0], db)) if i <= 3 || (i % 250).zero?
+  banner("Linear Regression", "course restaurant profits · handwritten batch GD")
+  x, y = CourseData.supervised(:linear, "data/ex1data1.txt")
+  w, b = LinearRegression.fit(x, y, rate: 0.01, iterations: 1500) do |i, weights, bias, cost, _dw, _db|
+    step("iteration #{i}: cost=#{cost} w=#{weights.inspect} b=#{bias}") if i <= 3 || (i % 300).zero?
   end
-  x.zip(y).each { |r, t| note(format("x=%.0f predicted=%.4f target=%.0f", r[0], LinearRegression.predict(r, w, b), t)) }
-  raise "line not learned" unless LinearRegression.loss(x, y, w, b) < 1e-8
+  [3.5, 7.0].each { |population| step("population #{population * 10_000}: predicted profit $#{(LinearRegression.predict([population], w, b) * 10_000).round(2)}") }
+  raise "Course regression failed" unless LinearRegression.loss(x, y, w, b) < 5
 
-  # Same gradient works with multiple features; no alternate estimator is hidden.
-  multi = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
-  mw, mb = LinearRegression.fit(multi, [1.0, 3.0, 4.0, 6.0], iterations: 3000)
-  raise "multiple regression failed" unless LinearRegression.loss(multi, [1, 3, 4, 6], mw, mb) < 1e-8
-
-  step("two features: weights #{vector(mw)}, bias #{format('%.4f', mb)}")
-  ok("one and multiple features recover their known coefficients")
+  ok("trained on all #{x.size} original observations")
 end

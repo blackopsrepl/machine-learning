@@ -1,37 +1,26 @@
 # frozen_string_literal: true
 
-# Stochastic gradient descent — one residual updates the model at a time.
-# Unlike batch GD, each shuffled example sees the weights left by the previous.
-# A decaying step size reduces late oscillation. No SGDRegressor is involved.
-# Run me: ruby supervised/stochastic_gradient_descent.rb
+# Original Python SGD lab: sklearn StandardScaler and SGDRegressor(max_iter=1000)
+# on the actual four-feature housing data. The library-backed example remains
+# separate from the handwritten batch-gradient implementation.
 require_relative "linear_regression"
-module StochasticGradientDescent
-  module_function
-
-  def fit(x, y, epochs: 300, rate: 0.05, rng: Random.new(42))
-    w, b, updates = Array.new(x.first.size, 0.0), 0.0, 0
-    epochs.times do |epoch|
-      x.each_index.to_a.shuffle(random: rng).each do |i|
-        error = LinearRegression.predict(x[i], w, b) - y[i]
-        alpha = rate / (1 + 0.001 * updates)
-        w = w.each_index.map { |j| w[j] - alpha * error * x[i][j] }
-        b -= alpha * error
-        updates += 1
-        yield epoch + 1, i, error, w.dup, b if block_given?
-      end
-    end
-    [w, b]
-  end
-end
 if __FILE__ == $PROGRAM_NAME
+  require_relative "../lib/reference"
   include Style
-  banner("Stochastic Gradient Descent", "one example per update · Random.new(42)")
-  w, b = StochasticGradientDescent.fit(Problem.line, Problem.line_targets) do |epoch, i, error, weights, bias|
-    step(format("epoch %d row %d residual=% .4f w=%.4f b=%.4f", epoch, i, error, weights[0], bias)) if epoch <= 2
-  end
-  cost = LinearRegression.loss(Problem.line, Problem.line_targets, w, b)
-  step(format("final w=%.5f b=%.5f J=%.8f", w[0], b, cost))
-  raise "SGD failed" unless cost < 1e-5
+  banner("SGDRegressor", "course housing data · scikit-learn")
+  np = Reference.numpy
+  rows = np.loadtxt(CourseData.path(:houses, "data/houses.txt"), delimiter: ",", skiprows: 1)
+  x = rows.__getitem__(PyCall.tuple([PyCall::Slice.new(nil), PyCall::Slice.new(0, 4)]))
+  y = rows.__getitem__(PyCall.tuple([PyCall::Slice.new(nil), -1]))
+  scaler = PyCall.import_module("sklearn.preprocessing").StandardScaler.new
+  normalized = scaler.fit_transform(x)
+  model = PyCall.import_module("sklearn.linear_model").SGDRegressor.new(max_iter: 1000, random_state: 42)
+  model.fit(normalized, y)
+  step("#{Reference.shape(x).inspect} housing table; iterations=#{model.n_iter_}; updates=#{model.t_}")
+  step("weights #{model.coef_}; intercept #{model.intercept_}")
+  predicted = model.predict(normalized)
+  step("first predictions #{Reference.list(predicted).first(4)}")
+  raise "SGD fit is not finite" unless np.isfinite(predicted).all.item
 
-  ok("sequential updates learn the same line as batch GD")
+  ok("the course estimator is trained on the actual housing records")
 end

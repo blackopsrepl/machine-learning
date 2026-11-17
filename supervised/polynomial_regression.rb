@@ -1,10 +1,9 @@
 # frozen_string_literal: true
 
-# Polynomial regression — nonlinear features, linear coefficients.
-# φ(x)=[x,x²,...,x^degree]. The bias is separate; the solver is unchanged.
-# Three points on x² distinguish a straight-line model from a quadratic.
-# Run me: ruby supervised/polynomial_regression.rb
-require_relative "normal_equation"
+# Original feature-engineering lab: x=0..19, quadratic targets and cos(x/2).
+# Handwritten gradient descent retains the source feature sets, normalization,
+# learning rates and iteration budgets, including the degree-13 cosine example.
+require_relative "linear_regression"
 module PolynomialRegression
   module_function
 
@@ -16,16 +15,26 @@ module PolynomialRegression
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Polynomial Regression", "change the features, not the learning rule")
-  x, y = [-2, -1, 0, 1, 2], [4.0, 1.0, 0.0, 1.0, 4.0]
-  losses = [1, 2].map do |degree|
-    features = PolynomialRegression.features(x, degree)
-    w, b = NormalEquation.fit(features, y)
-    cost = LinearRegression.loss(features, y, w, b)
-    step("degree #{degree}: w=#{vector(w)} b=#{b.round(4)} J=#{cost.round(6)}")
-    cost
-  end
-  raise "quadratic not recovered" unless losses[0] > 0.1 && losses[1] < 1e-12
+  banner("Polynomial Regression", "original feature-engineering lab targets and iteration budgets")
+  values = (0...20).map(&:to_f)
+  cases = [
+    ["raw x, target 1+x²", values.map { |x| [x] }, values.map { |x| 1 + x * x }, 1000, 1e-2],
+    ["engineered x²", values.map { |x| [x * x] }, values.map { |x| 1 + x * x }, 10_000, 1e-5],
+    ["raw x,x²,x³", PolynomialRegression.features(values, 3), values.map { |x| x * x }, 10_000, 1e-7],
+    ["scaled x,x²,x³", nil, values.map { |x| x * x }, 100_000, 0.1],
+    ["scaled degree 13, target cos(x/2)", nil, values.map { |x| Math.cos(x / 2) }, 1_000_000, 0.1]
+  ]
+  cases.each_with_index do |(label, x, y, budget, rate), index|
+    unless x
+      features = PolynomialRegression.features(values, index == 3 ? 3 : 13)
+      x = NumericTools.transform(features, NumericTools.fit_scaler(features))
+    end
+    iterations = ENV.fetch("ML_ITERATIONS", budget).to_i
+    step("#{label}: #{iterations} iterations, alpha=#{rate}")
+    w, b = LinearRegression.fit(x, y, rate: rate, iterations: iterations, trace_every: [iterations / 5, 1].max) { |i, _w, _b, cost, _dw, _db| note("iteration #{i}: cost=#{cost}") }
+    raise "Polynomial fit became nonfinite" unless w.all?(&:finite?) && b.finite?
 
-  ok("the quadratic basis explains curvature that a line cannot")
+    step("final cost=#{LinearRegression.loss(x, y, w, b)}; bias=#{b}; weights=#{vector(w)}")
+  end
+  ok("the original polynomial and cosine exercises retain their data and budgets")
 end
