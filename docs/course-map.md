@@ -1,22 +1,21 @@
 # Python course → runnable Ruby examples
 
 Scope: Andrew Ng / DeepLearning.AI / Stanford Online's Python Machine Learning
-Specialization. The source defines the applications, datasets, model dimensions,
-preprocessing and training settings. Only presentation changes to terminal output.
-Handwritten algorithms remain Ruby; library-backed assignments use the actual
-libraries through PyCall. Additional manual Adam/backpropagation/finite-difference
-examples are extensions, not substitutes for TensorFlow assignments.
+Specialization. The course defines the applications, dataset shapes, model
+dimensions, preprocessing and training settings; only presentation changes to
+terminal output. Algorithms the course writes out in NumPy are handwritten
+Ruby. Algorithms it takes from scikit-learn, Keras, XGBoost or Gym/Box2D are
+ported to Ruby from those libraries' own algorithms and defaults. Nothing runs
+Python.
 
-Local source root: `/srv/res/computing/DataEng/MachineLearningSpecialist/`.
-`D/` means `DeepLearningAI-ML_Specialization/`; `P/` means
+`D/` means the `DeepLearningAI-ML_Specialization/` course tree; `P/` means
 `Machine-Learning-Specialization-Coursera/`. They overlap; repeated notebook names
-are not separate algorithms. The source-location appendix preserves the audited
+are not separate algorithms. The source-location appendix lists the audited
 non-archive notebook paths. Introductory sections share named algorithm kernels;
 this is not a cell-for-cell notebook/UI port.
 
-Runtime asset locations are in [`data/sources.json`](../data/sources.json).
-The enclosing digit folder names are misleading: choose the notebook/data content,
-not the directory name. The binary loader retains the source's first-1000 selection.
+Datasets live in [`data/`](../data/README.md) under the course's file names and
+shapes. The binary-digit loader keeps the course's first-1000-row selection.
 
 ## Coverage matrix
 
@@ -28,37 +27,37 @@ Language/notebook onboarding; direct Ruby/Make entry points.
 
 ### `C1_W1_Lab02_Model_Representation_Soln.ipynb`
 
-Prediction, half-MSE and batch gradients; original restaurant-profit assignment.
+Prediction, half-MSE and batch gradients; course restaurant-profit assignment.
 
 [supervised/linear_regression.rb](../supervised/linear_regression.rb).
 
 ### `C1_W1_Lab03_Cost_function_Soln.ipynb`
 
-Prediction, half-MSE and batch gradients; original restaurant-profit assignment.
+Prediction, half-MSE and batch gradients; course restaurant-profit assignment.
 
 [supervised/linear_regression.rb](../supervised/linear_regression.rb).
 
 ### `C1_W1_Lab03_Model_Representation_Soln.ipynb`
 
-Prediction, half-MSE and batch gradients; original restaurant-profit assignment.
+Prediction, half-MSE and batch gradients; course restaurant-profit assignment.
 
 [supervised/linear_regression.rb](../supervised/linear_regression.rb).
 
 ### `C1_W1_Lab04_Cost_function_Soln.ipynb`
 
-Prediction, half-MSE and batch gradients; original restaurant-profit assignment.
+Prediction, half-MSE and batch gradients; course restaurant-profit assignment.
 
 [supervised/linear_regression.rb](../supervised/linear_regression.rb).
 
 ### `C1_W1_Lab04_Gradient_Descent_Soln.ipynb`
 
-Prediction, half-MSE and batch gradients; original restaurant-profit assignment.
+Prediction, half-MSE and batch gradients; course restaurant-profit assignment.
 
 [supervised/linear_regression.rb](../supervised/linear_regression.rb).
 
 ### `C1_W1_Lab05_Gradient_Descent_Soln.ipynb`
 
-Prediction, half-MSE and batch gradients; original restaurant-profit assignment.
+Prediction, half-MSE and batch gradients; course restaurant-profit assignment.
 
 [supervised/linear_regression.rb](../supervised/linear_regression.rb).
 
@@ -70,79 +69,79 @@ Array and dot-product foundations; Ruby loops make no NumPy performance claim.
 
 ### `C1_W2_Lab02_Multiple_Variable_Soln.ipynb`
 
-Explicit multivariate gradients and the original housing application.
+Explicit multivariate gradients and the course housing application.
 
 [supervised/feature_scaling.rb](../supervised/feature_scaling.rb), [supervised/linear_regression.rb](../supervised/linear_regression.rb).
 
 ### `C1_W2_Lab03_Feature_Scaling_and_Learning_Rate_Soln.ipynb`
 
-Original four-feature housing data and explicit population-standardization calculations.
+Course four-feature housing data and explicit population-standardization calculations.
 
 [supervised/feature_scaling.rb](../supervised/feature_scaling.rb).
 
 ### `C1_W2_Lab04_FeatEng_PolyReg_Soln.ipynb`
 
-Original quadratic/cosine feature experiments, scaling, rates and iteration budgets.
+Course quadratic/cosine feature experiments, scaling, rates and iteration budgets.
 
 [supervised/polynomial_regression.rb](../supervised/polynomial_regression.rb).
 
 ### `C1_W2_Lab05_Sklearn_GD_Soln.ipynb`
 
-Actual sklearn StandardScaler/SGDRegressor on original housing observations.
+scikit-learn StandardScaler/SGDRegressor, ported, on the course housing table.
 
 [supervised/stochastic_gradient_descent.rb](../supervised/stochastic_gradient_descent.rb).
 
 ### `C1_W2_Lab06_Sklearn_Normal_Soln.ipynb`
 
-Actual sklearn LinearRegression on original housing observations.
+scikit-learn LinearRegression, ported, on the course housing table.
 
 [supervised/normal_equation.rb](../supervised/normal_equation.rb).
 
 ### `C1_W2_Linear_Regression.ipynb`
 
-Prediction, half-MSE and batch gradients; original restaurant-profit assignment.
+Prediction, half-MSE and batch gradients; course restaurant-profit assignment.
 
 [supervised/linear_regression.rb](../supervised/linear_regression.rb).
 
 ### `C1_W3_Lab01_Classification_Soln.ipynb`
 
-Explicit sigmoid, logit boundary, BCE and gradients; original admissions application.
+Explicit sigmoid, logit boundary, BCE and gradients; course admissions application.
 
 [supervised/logistic_regression.rb](../supervised/logistic_regression.rb).
 
 ### `C1_W3_Lab02_Sigmoid_function_Soln.ipynb`
 
-Explicit sigmoid, logit boundary, BCE and gradients; original admissions application.
+Explicit sigmoid, logit boundary, BCE and gradients; course admissions application.
 
 [supervised/logistic_regression.rb](../supervised/logistic_regression.rb).
 
 ### `C1_W3_Lab03_Decision_Boundary_Soln.ipynb`
 
-Explicit sigmoid, logit boundary, BCE and gradients; original admissions application.
+Explicit sigmoid, logit boundary, BCE and gradients; course admissions application.
 
 [supervised/logistic_regression.rb](../supervised/logistic_regression.rb).
 
 ### `C1_W3_Lab04_LogisticLoss_Soln.ipynb`
 
-Explicit sigmoid, logit boundary, BCE and gradients; original admissions application.
+Explicit sigmoid, logit boundary, BCE and gradients; course admissions application.
 
 [supervised/logistic_regression.rb](../supervised/logistic_regression.rb).
 
 ### `C1_W3_Lab05_Cost_Function_Soln.ipynb`
 
-Explicit sigmoid, logit boundary, BCE and gradients; original admissions application.
+Explicit sigmoid, logit boundary, BCE and gradients; course admissions application.
 
 [supervised/logistic_regression.rb](../supervised/logistic_regression.rb).
 
 ### `C1_W3_Lab06_Gradient_Descent_Soln.ipynb`
 
-Explicit sigmoid, logit boundary, BCE and gradients; original admissions application.
+Explicit sigmoid, logit boundary, BCE and gradients; course admissions application.
 
 [supervised/logistic_regression.rb](../supervised/logistic_regression.rb).
 
 ### `C1_W3_Lab07_Scikit_Learn_Soln.ipynb`
 
-Actual sklearn classifier on the six original optional-lab observations.
+scikit-learn LogisticRegression, ported, on the six optional-lab observations.
 
 [supervised/sklearn_logistic_regression.rb](../supervised/sklearn_logistic_regression.rb).
 
@@ -154,147 +153,146 @@ Polynomial capacity and held-out selection using the course diagnostic generator
 
 ### `C1_W3_Lab09_Regularization_Soln.ipynb`
 
-Original admission/microchip inputs, degree-six mapping, weight-only L2 and explicit gradients.
+Course admission/microchip inputs, degree-six mapping, weight-only L2 and explicit gradients.
 
 [supervised/regularization.rb](../supervised/regularization.rb), [supervised/logistic_regression.rb](../supervised/logistic_regression.rb), [supervised/regularized_logistic_regression.rb](../supervised/regularized_logistic_regression.rb).
 
 ### `C1_W3_Logistic_Regression.ipynb`
 
-Original admission/microchip inputs, degree-six mapping, weight-only L2 and explicit gradients.
+Course admission/microchip inputs, degree-six mapping, weight-only L2 and explicit gradients.
 
 [supervised/regularization.rb](../supervised/regularization.rb), [supervised/logistic_regression.rb](../supervised/logistic_regression.rb), [supervised/regularized_logistic_regression.rb](../supervised/regularized_logistic_regression.rb).
 
 ### `C2W3_Lab_01_Model_Evaluation_and_Selection.ipynb`
 
-Both original CSVs, degree 1..10, all three original regression/classification architectures, source splits/scaling/optimizers/epochs.
+Both course CSVs, degree 1..10, all three course regression/classification architectures, source splits/scaling/optimizers/epochs.
 
 [evaluation/optional_model_evaluation.rb](../evaluation/optional_model_evaluation.rb), [evaluation/metrics.rb](../evaluation/metrics.rb).
 
 ### `C2W3_Lab_02_Diagnosing_Bias_and_Variance.ipynb`
 
-All four original diagnostic CSVs and source polynomial/Ridge comparisons.
+All four course diagnostic CSVs and source polynomial/Ridge comparisons.
 
 [evaluation/diagnosing_bias_variance.rb](../evaluation/diagnosing_bias_variance.rb).
 
 ### `C2_W1_Assignment.ipynb`
 
-Original digit images, 400→25→15→1 TensorFlow training and handwritten inference.
+Digit images, 400→25→15→1 Keras training (ported) and handwritten inference.
 
 [neural_networks/binary_classification.rb](../neural_networks/binary_classification.rb), [neural_networks/dense_layer.rb](../neural_networks/dense_layer.rb).
 
 ### `C2_W1_Lab01_Neurons_and_Layers.ipynb`
 
-Explicit neuron/layer calculations and actual Keras layers; original applications.
+Explicit neuron/layer calculations and the ported Keras layers.
 
 [neural_networks/dense_layer.rb](../neural_networks/dense_layer.rb), [neural_networks/coffee_roasting.rb](../neural_networks/coffee_roasting.rb).
 
 ### `C2_W1_Lab02_CoffeeRoasting_TF.ipynb`
 
-Original generated observations, normalization, 2→3→1 training and explicit dense inference.
+Course generated observations, normalization, 2→3→1 training and explicit dense inference.
 
 [neural_networks/coffee_roasting.rb](../neural_networks/coffee_roasting.rb), [neural_networks/dense_layer.rb](../neural_networks/dense_layer.rb).
 
 ### `C2_W1_Lab03_CoffeeRoasting_Numpy.ipynb`
 
-Original generated observations, normalization, 2→3→1 training and explicit dense inference.
+Course generated observations, normalization, 2→3→1 training and explicit dense inference.
 
 [neural_networks/coffee_roasting.rb](../neural_networks/coffee_roasting.rb), [neural_networks/dense_layer.rb](../neural_networks/dense_layer.rb).
 
 ### `C2_W2_Assignment.ipynb`
 
-Original ten-digit problem and 400→25→15→10 TensorFlow logit model.
+Ten-digit problem and 400→25→15→10 Keras logit model (ported).
 
 [neural_networks/multiclass_classification.rb](../neural_networks/multiclass_classification.rb), [neural_networks/softmax.rb](../neural_networks/softmax.rb).
 
 ### `C2_W2_Multiclass_TF.ipynb`
 
-Original four-center/100-point optional experiment and 2→2→4 TensorFlow model.
+Four-center/100-point make_blobs experiment and 2→2→4 Keras model (ported).
 
 [neural_networks/multiclass_blobs.rb](../neural_networks/multiclass_blobs.rb).
 
 ### `C2_W2_Relu.ipynb`
 
-Original fixed/adjustable hinge model and piecewise target; CLI parameters replace sliders.
+Course fixed/adjustable hinge model and piecewise target; CLI parameters replace sliders.
 
 [neural_networks/relu.rb](../neural_networks/relu.rb).
 
 ### `C2_W2_SoftMax.ipynb`
 
-Explicit stable softmax and fused categorical logit loss, plus actual digit training.
+Explicit stable softmax and fused categorical logit loss, plus digit training.
 
 [neural_networks/softmax.rb](../neural_networks/softmax.rb), [neural_networks/multiclass_classification.rb](../neural_networks/multiclass_classification.rb).
 
 ### `C2_W3_Assignment.ipynb`
 
-Original noisy quadratic generator, degree/lambda grids, sample sizes and six-class capacity/regularization experiment.
+Course noisy quadratic generator, degree/lambda grids, sample sizes and six-class capacity/regularization experiment.
 
 [evaluation/model_selection.rb](../evaluation/model_selection.rb), [evaluation/learning_curves.rb](../evaluation/learning_curves.rb), [evaluation/neural_model_selection.rb](../evaluation/neural_model_selection.rb).
 
 ### `C2_W4_Decision_Tree_with_Markdown.ipynb`
 
-Original ten-row mushroom assignment; entropy, partitions and information gain are explicit Ruby.
+Course ten-row mushroom assignment; entropy, partitions and information gain are explicit Ruby.
 
 [trees/decision_tree.rb](../trees/decision_tree.rb).
 
 ### `C2_W4_Lab_01_Decision_Trees.ipynb`
 
-Original ten-row mushroom assignment; entropy, partitions and information gain are explicit Ruby.
+Course ten-row mushroom assignment; entropy, partitions and information gain are explicit Ruby.
 
 [trees/decision_tree.rb](../trees/decision_tree.rb).
 
 ### `C2_W4_Lab_02_Tree_Ensemble.ipynb`
 
-Original heart.csv preprocessing/split, actual sklearn CART/forest sweeps and XGBoost early stopping.
+heart.csv preprocessing/split, ported scikit-learn CART/forest sweeps and ported XGBoost early stopping.
 
 [trees/random_forest.rb](../trees/random_forest.rb), [trees/xgboost.rb](../trees/xgboost.rb).
 
 ### `C3_W1_Anomaly_Detection.ipynb`
 
-Both original server datasets; handwritten Gaussian fitting and 1000-step validation-F1 threshold selection.
+Both course server datasets; handwritten Gaussian fitting and 1000-step validation-F1 threshold selection.
 
 [unsupervised/anomaly_detection.rb](../unsupervised/anomaly_detection.rb).
 
 ### `C3_W1_KMeans_Assignment.ipynb`
 
-Original 300-point assignment, initial centers, ten iterations and actual 16-color bird reconstruction.
+300-point assignment, initial centers, ten iterations and 16-color bird reconstruction.
 
 [unsupervised/k_means.rb](../unsupervised/k_means.rb), [unsupervised/image_compression.rb](../unsupervised/image_compression.rb).
 
 ### `C3_W2_Collaborative_RecSys_Assignment.ipynb`
 
-Original ratings/mask/metadata and personal column; explicit scalar objective and actual 100-factor TensorFlow training.
+Ratings/mask/metadata and personal column; explicit objective, written-out gradients and 100-factor Adam training.
 
 [recommenders/collaborative_filtering.rb](../recommenders/collaborative_filtering.rb).
 
 ### `C3_W2_RecSysNN_Assignment.ipynb`
 
-Original features/scalers/split; 256→128→32 towers, 30 epochs, new/existing-user and learned-item similarity workflows.
+Course features/scalers/split; 256→128→32 towers, 30 epochs, new/existing-user and learned-item similarity workflows.
 
 [recommenders/content_based_filtering.rb](../recommenders/content_based_filtering.rb).
 
 ### `C3_W3_A1_Assignment.ipynb`
 
-Actual LunarLander-v2, original observation/action spaces, networks, replay, objective and training settings.
+LunarLander-v2 ported with its Box2D physics; course observation/action spaces, networks, replay, objective and training settings.
 
 [reinforcement_learning/deep_q_learning.rb](../reinforcement_learning/deep_q_learning.rb).
 
 ### `State-action value function example.ipynb`
 
-Original six-state reward/transition conventions and policy iteration.
+Course six-state reward/transition conventions and policy iteration.
 
 [reinforcement_learning/state_action_values.rb](../reinforcement_learning/state_action_values.rb).
 
 ## Execution boundaries
 
-- `make check` executes every entry point on original assets with explicit bounds
-  for long polynomial, neural-advice and Lunar Lander training.
-- Individual targets and `make all` retain source training budgets.
+- `make check` runs every entry point at the course's settings, including the
+  1,000,000-iteration polynomial runs and up to 2000 Lunar Lander episodes.
 - Course input-scaling-before-split in the content recommender is preserved and
   documented, not silently corrected into a different workflow.
 - Gym 0.26 separates terminated/truncated flags; the DQN combines them to retain
-  the original Gym `done` replay semantics.
-- NumPy-style Ruby dense inference is compared with original-dimension trained
-  TensorFlow weights. The manual optimizer/gradient examples are separate.
+  the course's `done` replay semantics.
+- The Lunar Lander port omits Box2D's continuous collision; everything else the
+  environment uses is ported.
 
 ## Source-location appendix
 
