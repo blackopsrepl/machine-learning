@@ -16,7 +16,7 @@ module CourseData
   end
 
   def table(dataset, file, skip: 0)
-    File.readlines(path(dataset, file), chomp: true).drop(skip).filter_map do |line|
+    File.readlines(path(dataset, file), chomp: true, encoding: "UTF-8").drop(skip).filter_map do |line|
       next if line.strip.empty? || line.lstrip.start_with?("#")
 
       line.strip.split(/[\s,]+/).map { |value| Float(value) }
@@ -30,7 +30,7 @@ module CourseData
 
   # Quoted-field CSV reader for the movie metadata; returns header and rows.
   def csv(dataset, file)
-    lines = File.readlines(path(dataset, file), chomp: true).reject(&:empty?)
+    lines = File.readlines(path(dataset, file), chomp: true, encoding: "UTF-8").reject(&:empty?)
     rows = lines.map { |line| fields(line) }
     [rows.first, rows.drop(1)]
   end

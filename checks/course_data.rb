@@ -53,7 +53,7 @@ raise "content tables differ in schema" unless users.size == items.size && items
 _header, catalogue = CourseData.csv(:content, "data/content_movie_list.csv")
 raise "content movie list misses item vectors" unless vectors.map { |r| r[0].to_i }.uniq.all? { |id| catalogue.any? { |row| row[0].to_i == id } }
 
-heart_header = File.readlines(CourseData.path(:heart, "heart.csv"), chomp: true).first
+heart_header = File.readlines(CourseData.path(:heart, "heart.csv"), chomp: true, encoding: "UTF-8").first
 raise "heart.csv header differs" unless heart_header == "Age,Sex,ChestPainType,RestingBP,Cholesterol,FastingBS,RestingECG,MaxHR,ExerciseAngina,Oldpeak,ST_Slope,HeartDisease"
 
 puts "content: #{users.size} user/item/rating rows, #{vectors.size} item vectors"
