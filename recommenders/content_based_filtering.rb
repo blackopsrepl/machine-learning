@@ -75,6 +75,10 @@ module ContentBasedFiltering
       bv = normalized(@item_tower.predict(b))[0]
       av.zip(bv).sum { |x, y| (x - y)**2 }
     end
+
+    def similar_items(items, index)
+      items.each_index.reject { |j| j == index }.sort_by { |j| item_distance(items[index], items[j]) }
+    end
   end
 end
 if __FILE__ == $PROGRAM_NAME
@@ -116,6 +120,13 @@ if __FILE__ == $PROGRAM_NAME
   far = model.item_distance(items[0], items[2])
   step("movie 0 distance: similar genre #{near.round(4)}, opposite genre #{far.round(4)}")
   raise "embedding distance uninformative" unless near < far
+
+  items.each_index do |i|
+    similar = model.similar_items(items, i)
+    step("movie #{i}: other movies ranked by embedding distance #{similar.inspect}")
+    raise "self match retained" if similar.include?(i)
+  end
+  raise "nearest genre partner missed" unless model.similar_items(items, 0).first == 1
 
   ok("learned normalized vectors support both user ranking and item similarity")
 end
