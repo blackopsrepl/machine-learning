@@ -1,42 +1,57 @@
 # frozen_string_literal: true
 
-# Neural model selection — compare capacity and L2 on the same noisy labels.
-# Choose by validation classification error, not by lowest training loss.
-# Validation/test points are separate observations, not fit-time preprocessing.
-# Run me: ruby evaluation/neural_model_selection.rb
-require_relative "../neural_networks/backpropagation"
+# Original C2 W3 advice: 800 samples, six stated centers, std .4, random_state 2.
+# Compare 120→40→6, 6→6 and L2(.1) 120→40→6; retain the seven-lambda sweep.
+require_relative "../lib/style"
+require_relative "../lib/reference"
+module NeuralModelSelection
+  module_function
+
+  def build(widths, input_size:, lambda_: 0.0)
+    tf = Reference.tensorflow
+    layers = [tf.keras.Input(shape: [input_size])]
+    widths.each_with_index do |width, index|
+      options = { activation: index == widths.size - 1 ? "linear" : "relu" }
+      options[:kernel_regularizer] = tf.keras.regularizers.L2.new(lambda_) if lambda_ > 0 && index < widths.size - 1
+      layers << tf.keras.layers.Dense.new(width, **options)
+    end
+    tf.keras.Sequential.new(layers)
+  end
+
+  def error(model, x, y)
+    logits = model.predict(x, verbose: 0)
+    1.0 - Reference.accuracy(y, Reference.numpy.argmax(logits, axis: 1))
+  end
+end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Neural Model Selection", "simple, complex and regularized · same noisy training rows")
-  x = Problem.classes
-  noisy = Problem.class_targets
-  noisy[1] = 1
-  noisy[4] = 2
-  validation = x.map { |a, b| [a + 0.15, b + 0.1] }
-  labels = Problem.class_targets
-  choices = [[[2, 2, 3], 0.0], [[2, 12, 12, 3], 0.0], [[2, 12, 12, 3], 0.5]].map do |sizes, lambda|
-    network = Backpropagation::Network.new(sizes, activations: Array.new(sizes.size - 2, :relu) + [:softmax])
-    network.fit(x, noisy, loss: :categorical, l2: lambda, iterations: 500, optimizer: Adam.new)
-    classify = ->(rows) {
-      rows.map do |r|
-        p = network.predict(r)
-        p.each_index.max_by { |j| p[j] }
-      end
-    }
-    train_error = 1 - NumericTools.accuracy(noisy, classify.call(x))
-    validation_error = 1 - NumericTools.accuracy(labels, classify.call(validation))
-    step("sizes=#{sizes.inspect} λ=#{lambda} train error=#{train_error.round(3)} validation error=#{validation_error.round(3)}")
-    [validation_error, network, lambda]
+  banner("Neural Bias, Variance and Regularization", "original 800 points · six classes · TensorFlow")
+  tf = Reference.tensorflow
+  tf.keras.backend.set_floatx("float64")
+  centers = [[-1, 0], [1, 0], [0, 1], [0, -1], [-2, 1], [-2, -1]]
+  x, y = PyCall.import_module("sklearn.datasets").make_blobs(n_samples: 800, centers: centers, cluster_std: 0.4, random_state: 2, n_features: 2).to_a
+  splitter = PyCall.import_module("sklearn.model_selection")
+  train, other, train_y, other_y = splitter.train_test_split(x, y, test_size: 0.5, random_state: 1).to_a
+  cv, test, cv_y, test_y = splitter.train_test_split(other, other_y, test_size: 0.2, random_state: 1).to_a
+  epochs = Integer(ENV.fetch("ML_EPOCHS", 1000))
+  configurations = [["complex", [120, 40, 6], 0.0, 2], ["simple", [6, 6], 0.0, 2], ["regularized", [120, 40, 6], 0.1, 2]]
+  choices = configurations.map do |label, widths, lambda_, passes|
+    Reference.seed(1234)
+    model = NeuralModelSelection.build(widths, input_size: 2, lambda_: lambda_)
+    model.compile(loss: tf.keras.losses.SparseCategoricalCrossentropy.new(from_logits: true), optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.01))
+    passes.times { model.fit(train, train_y, epochs: epochs, batch_size: 32, verbose: 0) }
+    train_error = NeuralModelSelection.error(model, train, train_y)
+    cv_error = NeuralModelSelection.error(model, cv, cv_y)
+    step("#{label} #{widths.inspect}: #{passes}×#{epochs} epochs; train error=#{train_error}; validation=#{cv_error}")
+    [cv_error, label, model]
   end
-  error, best, lambda = choices.min_by(&:first)
-  test = x.map { |a, b| [a - 0.15, b - 0.1] }
-  predicted = test.map do |r|
-    p = best.predict(r)
-    p.each_index.max_by { |j| p[j] }
+  choices.each { |_err, label, model| step("#{label}: held-out test error=#{NeuralModelSelection.error(model, test, test_y)}") }
+  Reference.seed(1234)
+  [0.0, 0.001, 0.01, 0.05, 0.1, 0.2, 0.3].each do |lambda_|
+    model = NeuralModelSelection.build([120, 40, 6], input_size: 2, lambda_: lambda_)
+    model.compile(loss: tf.keras.losses.SparseCategoricalCrossentropy.new(from_logits: true), optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.01))
+    model.fit(train, train_y, epochs: epochs, batch_size: 32, verbose: 0)
+    step("lambda=#{lambda_}: train error=#{NeuralModelSelection.error(model, train, train_y)}; validation=#{NeuralModelSelection.error(model, cv, cv_y)}")
   end
-  test_error = 1 - NumericTools.accuracy(labels, predicted)
-  step("selected λ=#{lambda}; validation error=#{error.round(3)}; untouched test error=#{test_error.round(3)}")
-  raise "selection lost useful classification" unless test_error < 0.5
-
-  ok("capacity and regularization are measured on held-out labels, not guessed from fit")
+  ok("all original network capacities and regularization candidates remain available")
 end

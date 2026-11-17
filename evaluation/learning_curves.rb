@@ -1,28 +1,20 @@
 # frozen_string_literal: true
 
-# Learning curves — refit on growing subsets; report unpenalized train/CV error.
-# A persistent gap suggests variance; high errors on both suggest bias.
-# More data is not guaranteed to help every particular sample or model.
-# Run me: ruby evaluation/learning_curves.rb
+# Original tune_m helper: degree 16, m=50..750 by 50, seed 5/noise .7,
+# 60/20/20 split(seed 1), unregularized polynomial/scaled LinearRegression.
 require_relative "model_selection"
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Learning Curves", "training size and capacity are different levers")
-  x = [-1.0, 0.0, 1.0, -0.5, 0.5, -0.75, 0.75, -0.25, 0.25]
-  y = x.map { |v| v * v }
-  validation = [-0.9, -0.3, 0.3, 0.9]
-  truth = validation.map { |v| v * v }
-  results = {}
-  [1, 2].each do |degree|
-    [3, 5, 9].each do |size|
-      model = ModelSelection.fit(x.first(size), y.first(size), degree: degree)
-      train = NumericTools.mse(y.first(size), ModelSelection.predict(model, x.first(size)))
-      cv = NumericTools.mse(truth, ModelSelection.predict(model, validation))
-      results[[degree, size]] = cv
-      step(format("degree=%d m=%d train MSE=%.6f validation MSE=%.6f", degree, size, train, cv))
-    end
+  banner("Learning Curves", "original degree-16 sample-size experiment")
+  (1..15).each do |multiple|
+    count = 50 * multiple
+    x, y = ModelSelection.generated(count, seed: 5, scale: 0.7)
+    train, train_y, cv, cv_y, _test, _test_y = ModelSelection.split(x, y)
+    fit = ModelSelection.fit(train, train_y, degree: 16)
+    train_cost = ModelSelection.half_mse(train_y, ModelSelection.predict(fit, train))
+    cv_cost = ModelSelection.half_mse(cv_y, ModelSelection.predict(fit, cv))
+    step("m=#{count}: training half-MSE=#{train_cost}; validation half-MSE=#{cv_cost}")
+    raise "Learning curve produced nonfinite values" unless train_cost.finite? && cv_cost.finite?
   end
-  raise "bias example failed" unless results[[1, 9]] > 0.01 && results[[2, 9]] < 1e-12
-
-  ok("more rows do not turn a line into a quadratic; changing the basis does")
+  ok("all fifteen original training-set sizes are measured")
 end

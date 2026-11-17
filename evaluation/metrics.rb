@@ -21,15 +21,13 @@ module Metrics
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Evaluation Metrics", "accuracy can reward a useless rare-event detector")
-  labels = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
-  [[0] * 10, [0, 0, 0, 0, 0, 0, 0, 0, 1, 1]].each do |prediction|
-    m = Metrics.binary(labels, prediction)
-    step("predictions #{prediction.inspect}: accuracy=#{NumericTools.accuracy(labels, prediction)} precision=#{m[:precision]} recall=#{m[:recall]} F1=#{m[:f1].round(4)}")
+  banner("Evaluation Metrics", "original C2 W3 exercise values · handwritten")
+  actual, predicted = [2.3, 4.1], [2.4, 4.2]
+  step("half-MSE=#{NumericTools.mse(actual, predicted) / 2.0}")
+  [[1, 2, 3], [1, 2, 1, 3]].zip([[1, 2, 0], [1, 2, 0, 3]]).each do |labels, estimates|
+    step("labels=#{labels.inspect}; predictions=#{estimates.inspect}; categorical error=#{1 - NumericTools.accuracy(labels, estimates)}")
   end
-  mse = NumericTools.mse([1.0, 3.0], [2.0, 1.0])
-  step("residuals [1,-2]: MSE=#{mse}; course half-MSE=#{mse / 2}")
-  raise "wrong metrics" unless mse == 2.5 && Metrics.binary([1, 0], [0, 0])[:f1] == 0
+  raise "Original MSE calculation failed" unless (NumericTools.mse(actual, predicted) / 2 - 0.005).abs < 1e-12
 
-  ok("false negatives are visible even when accuracy looks respectable")
+  ok("the course's MSE and classification-error conventions are explicit")
 end
