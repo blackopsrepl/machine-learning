@@ -1,58 +1,66 @@
 # frozen_string_literal: true
 
-# Original optional model-evaluation lab: both data_w3 CSVs, degrees 1..10,
-# and the three exact regression/classification architectures from utils.py.
+# Course optional lab "Model Evaluation and Selection": data_w3_ex1.csv
+# (degrees 1–10, scaled LinearRegression) and the lab's three networks
+# 25→15→1, 20→12→12→20→1, 32→16→8→4→12→1 (ReLU, linear output) trained with
+# MSE/Adam(0.1)/300 epochs on degree-1 scaled inputs; then data_w3_ex2.csv
+# with BCE from logits/Adam(0.01)/200 epochs, thresholding sigmoid at 0.5.
+# Splits: train_test_split 60/20/20 with random_state=1.
+# Run me: ruby evaluation/optional_model_evaluation.rb
 require_relative "model_selection"
 require_relative "neural_model_selection"
+require_relative "../lib/course_data"
+module OptionalModelEvaluation
+  WIDTHS = [[25, 15, 1], [20, 12, 12, 20, 1], [32, 16, 8, 4, 12, 1]].freeze
+
+  module_function
+
+  def models(input_size)
+    WIDTHS.map { |widths| NeuralModelSelection.build(widths, input_size: input_size, seed: 20) }
+  end
+
+  def classification_error(model, x, y)
+    decisions = model.logits(x).map { |(z)| 1.0 / (1 + Math.exp(-z)) >= 0.5 ? 1 : 0 }
+    decisions.zip(y).count { |d, t| d != t.to_i }.to_f / y.size
+  end
+end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Model Evaluation and Selection", "original optional-lab CSVs · sklearn and TensorFlow")
-  np, tf = Reference.numpy, Reference.tensorflow
-  tf.keras.backend.set_floatx("float32")
-  data = np.loadtxt(CourseData.path(:evaluation, "data/data_w3_ex1.csv"), delimiter: ",")
-  x, y = Reference.columns(data, 0, 1), Reference.columns(data, 1, 2)
+  banner("Model Evaluation and Selection", "course lab CSVs · polynomial and neural candidates")
+  rows = CourseData.table(:evaluation, "data/data_w3_ex1.csv")
+  x, y = rows.map { |r| [r[0]] }, rows.map(&:last)
   train, train_y, cv, cv_y, test, test_y = ModelSelection.split(x, y)
-  choices = (1..10).map do |degree|
-    fit = ModelSelection.fit(train, train_y, degree: degree)
-    train_cost = ModelSelection.half_mse(train_y, ModelSelection.predict(fit, train))
-    cv_cost = ModelSelection.half_mse(cv_y, ModelSelection.predict(fit, cv))
-    step("degree #{degree}: train half-MSE=#{train_cost}; validation=#{cv_cost}")
-    [cv_cost, degree, fit]
+  scaler = NumericTools.fit_scaler(train)
+  step("training mean #{scaler[0].first.round(2)}, standard deviation #{scaler[1].first.round(2)}")
+  results = (1..10).map do |degree|
+    model = ModelSelection.fit(train, train_y, degree: degree)
+    a, b = ModelSelection.errors(model, train, train_y, cv, cv_y)
+    step("degree #{degree}: train=#{a}; validation=#{b}")
+    [b, degree, model]
   end
-  error, degree, best = choices.min_by(&:first)
-  step("selected degree #{degree}: validation=#{error}; test=#{ModelSelection.half_mse(test_y, ModelSelection.predict(best, test))}")
-  widths = [[25, 15, 1], [20, 12, 12, 20, 1], [32, 16, 8, 4, 12, 1]]
-  Reference.seed(20)
-  scaler = PyCall.import_module("sklearn.preprocessing").StandardScaler.new
-  scaled_train = scaler.fit_transform(train)
-  scaled_cv, scaled_test = scaler.transform(cv), scaler.transform(test)
-  regression_epochs = Integer(ENV.fetch("ML_EPOCHS", 300))
-  models = widths.map { |layers| NeuralModelSelection.build(layers, input_size: 1) }
-  models.each_with_index do |model, i|
-    layers = widths[i]
-    model.compile(loss: "mse", optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.1))
-    model.fit(scaled_train, train_y, epochs: regression_epochs, batch_size: 32, verbose: 0)
-    step("regression network #{i + 1} #{layers.inspect}: #{regression_epochs} epochs; train half-MSE=#{ModelSelection.half_mse(train_y, model.predict(scaled_train, verbose: 0))}; validation=#{ModelSelection.half_mse(cv_y, model.predict(scaled_cv, verbose: 0))}")
-    model
+  error, degree, best = results.min_by(&:first)
+  step("lowest validation error at degree #{degree}: #{error}; test=#{ModelSelection.half_mse(test_y, ModelSelection.predict(best, test))}")
+  scaled_train, scaled_cv, scaled_test = [train, cv, test].map { |part| NumericTools.transform(part, scaler) }
+  networks = OptionalModelEvaluation.models(1)
+  networks.each_with_index do |model, i|
+    model.compile(loss: :mse, optimizer: Adam.new(learning_rate: 0.1))
+    model.fit(scaled_train, train_y.map { |v| [v] }, epochs: 300, rng: Random.new(20 + i))
+    step("model #{i + 1} #{OptionalModelEvaluation::WIDTHS[i].inspect}: train=#{ModelSelection.half_mse(train_y, model.predict(scaled_train))}; validation=#{ModelSelection.half_mse(cv_y, model.predict(scaled_cv))}")
   end
-  step("course-selected regression model 3: test half-MSE=#{ModelSelection.half_mse(test_y, models[2].predict(scaled_test, verbose: 0))}")
-  data = np.loadtxt(CourseData.path(:evaluation, "data/data_w3_ex2.csv"), delimiter: ",")
-  x, y = Reference.columns(data, 0, -1), Reference.columns(data, -1)
+  step("course-selected model 3: test=#{ModelSelection.half_mse(test_y, networks[2].predict(scaled_test))}")
+  rows = CourseData.table(:evaluation, "data/data_w3_ex2.csv")
+  x, y = rows.map { |r| r[0...-1] }, rows.map(&:last)
   train, train_y, cv, cv_y, test, test_y = ModelSelection.split(x, y)
-  scaler = PyCall.import_module("sklearn.preprocessing").StandardScaler.new
-  scaled_train = scaler.fit_transform(train)
-  scaled_cv, scaled_test = scaler.transform(cv), scaler.transform(test)
-  Reference.seed(20)
-  classification_epochs = Integer(ENV.fetch("ML_EPOCHS", 200))
-  classify = lambda { |model, rows| np.greater_equal(tf.math.sigmoid(model.predict(rows, verbose: 0)).numpy, 0.5).astype("int32") }
-  models = widths.map { |layers| NeuralModelSelection.build(layers, input_size: Reference.shape(train)[1]) }
-  models.each_with_index do |model, i|
-    layers = widths[i]
-    model.compile(loss: tf.keras.losses.BinaryCrossentropy.new(from_logits: true), optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.01))
-    model.fit(scaled_train, train_y, epochs: classification_epochs, batch_size: 32, verbose: 0)
-    step("classification network #{i + 1} #{layers.inspect}: #{classification_epochs} epochs; train error=#{1 - Reference.accuracy(train_y, classify.call(model, scaled_train))}; validation=#{1 - Reference.accuracy(cv_y, classify.call(model, scaled_cv))}")
-    model
+  scaler = NumericTools.fit_scaler(train)
+  scaled_train, scaled_cv, scaled_test = [train, cv, test].map { |part| NumericTools.transform(part, scaler) }
+  probabilities, truth = [0.2, 0.6, 0.7, 0.3, 0.8], [1, 1, 1, 1, 1]
+  step("lab example: predictions #{probabilities.map { |p| p >= 0.5 ? 1 : 0 }.inspect}; fraction misclassified=#{probabilities.zip(truth).count { |p, t| (p >= 0.5 ? 1 : 0) != t } / 5.0}")
+  networks = OptionalModelEvaluation.models(2)
+  networks.each_with_index do |model, i|
+    model.compile(loss: :binary_crossentropy, optimizer: Adam.new(learning_rate: 0.01))
+    model.fit(scaled_train, train_y, epochs: 200, rng: Random.new(20 + i))
+    step("model #{i + 1}: train error=#{OptionalModelEvaluation.classification_error(model, scaled_train, train_y)}; validation=#{OptionalModelEvaluation.classification_error(model, scaled_cv, cv_y)}")
   end
-  step("course-selected classification model 3: test error=#{1 - Reference.accuracy(test_y, classify.call(models[2], scaled_test))}")
-  ok("both original CSV applications and every original candidate architecture are retained")
+  step("course-selected model 3: test error=#{OptionalModelEvaluation.classification_error(networks[2], scaled_test, test_y)}")
+  ok("each candidate is chosen on validation data and reported once on test data")
 end

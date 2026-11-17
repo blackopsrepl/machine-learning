@@ -1,42 +1,54 @@
 # frozen_string_literal: true
 
-# Original optional bias/variance lab: all four CSVs, feature subsets, lambda
-# sweeps and 10%-100% learning curves. No invented replacement observations.
+# Course optional lab "Diagnosing Bias and Variance": prepare_dataset splits
+# each CSV 60/20/20 with random_state=80; train_plot_poly, train_plot_reg_params,
+# train_plot_diff_datasets and train_plot_learning_curve with the lab's degrees,
+# λ lists and 10%…100% subsets.
+# Run me: ruby evaluation/diagnosing_bias_variance.rb
 require_relative "model_selection"
+require_relative "../lib/course_data"
 module DiagnosingBiasVariance
   module_function
 
   def data(number)
-    rows = Reference.numpy.loadtxt(CourseData.path(:evaluation, "data/c2w3_lab2_data#{number}.csv"), delimiter: ",")
-    ModelSelection.split(Reference.columns(rows, 0, -1), Reference.columns(rows, -1).reshape([-1]), seed: 80)
+    rows = CourseData.table(:evaluation, "data/c2w3_lab2_data#{number}.csv")
+    ModelSelection.split(rows.map { |r| r[0...-1] }, rows.map(&:last), seed: 80)
   end
 
   def report(train, train_y, cv, cv_y, degree:, lambda_: nil)
-    model = ModelSelection.fit(train, train_y, degree: degree, l2: lambda_)
-    [ModelSelection.half_mse(train_y, ModelSelection.predict(model, train)), ModelSelection.half_mse(cv_y, ModelSelection.predict(model, cv))]
+    ModelSelection.errors(ModelSelection.fit(train, train_y, degree: degree, l2: lambda_), train, train_y, cv, cv_y)
   end
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Diagnosing Bias and Variance", "original optional-lab CSVs · scikit-learn")
-  [[1, 10], [2, 6], [3, 4]].each do |part, max_degree|
-    train, train_y, cv, cv_y, _test, _test_y = DiagnosingBiasVariance.data(part)
+  banner("Diagnosing Bias and Variance", "course lab CSVs · polynomial and Ridge fits")
+  [[1, 10], [2, 6]].each do |part, max_degree|
+    train, train_y, cv, cv_y, = DiagnosingBiasVariance.data(part)
     (1..max_degree).each do |degree|
       a, b = DiagnosingBiasVariance.report(train, train_y, cv, cv_y, degree: degree)
-      step("dataset #{part}, #{Reference.shape(train)[1]} features, degree #{degree}: train=#{a}; validation=#{b}")
+      step("data#{part} (#{train.first.size} features), degree #{degree}: train=#{a}; validation=#{b}")
     end
   end
-  train, train_y, cv, cv_y, *_ = DiagnosingBiasVariance.data(2)
-  [10, 5, 2, 1, 0.5, 0.2, 0.1, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1].each do |lambda_|
-    a, b = DiagnosingBiasVariance.report(train, train_y, cv, cv_y, degree: 4, lambda_: lambda_)
-    step("degree 4, lambda #{lambda_}: train=#{a}; validation=#{b}")
+  train, train_y, cv, cv_y, = DiagnosingBiasVariance.data(2)
+  [[10, 5, 2, 1, 0.5, 0.2, 0.1], [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1]].each do |lambdas|
+    lambdas.each do |lambda_|
+      a, b = DiagnosingBiasVariance.report(train, train_y, cv, cv_y, degree: 4, lambda_: lambda_)
+      step("data2, degree 4, λ=#{lambda_}: train=#{a}; validation=#{b}")
+    end
   end
-  train, train_y, cv, cv_y, *_ = DiagnosingBiasVariance.data(4)
+  [3, 2].each do |part|
+    train, train_y, cv, cv_y, = DiagnosingBiasVariance.data(part)
+    (1..4).each do |degree|
+      a, b = DiagnosingBiasVariance.report(train, train_y, cv, cv_y, degree: degree)
+      step("data#{part} (#{train.first.size} features), degree #{degree}: train=#{a}; validation=#{b}")
+    end
+  end
+  train, train_y, cv, cv_y, = DiagnosingBiasVariance.data(4)
   (10..100).step(10) do |percent|
-    nt = (Reference.shape(train)[0] * percent / 100.0).round
-    nv = (Reference.shape(cv)[0] * percent / 100.0).round
-    a, b = DiagnosingBiasVariance.report(Reference.rows(train, 0, nt), Reference.rows(train_y, 0, nt), Reference.rows(cv, 0, nv), Reference.rows(cv_y, 0, nv), degree: 4)
-    step("#{percent}%: train rows=#{nt}, validation rows=#{nv}, train=#{a}, validation=#{b}")
+    nt = (train.size * percent / 100.0).round
+    nv = (cv.size * percent / 100.0).round
+    a, b = DiagnosingBiasVariance.report(train.first(nt), train_y.first(nt), cv.first(nv), cv_y.first(nv), degree: 4)
+    step("data4, #{percent}%: #{nt} train / #{nv} validation rows; train=#{a}; validation=#{b}")
   end
-  ok("the original feature and sample-size diagnosis experiments run on their CSVs")
+  ok("feature, degree, penalty and sample-size diagnoses on every lab dataset")
 end
