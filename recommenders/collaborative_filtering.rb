@@ -1,113 +1,98 @@
 # frozen_string_literal: true
 
-# Collaborative filtering — factorize ratings into movie and user vectors.
-# J=½Σ_observed(x_i·w_j+b_j-Ynorm_ij)² + λ/2 (||X||²+||W||²).
-# Missing ratings contribute NOTHING, not a zero-valued target. Movie means
-# are restored after prediction; user biases are not regularized.
-# Run me: ruby recommenders/collaborative_filtering.rb
+# C3 W2 collaborative filtering: original movie/user matrices, 100 latent features,
+# observed-rating mask, movie-mean normalization and user biases. The scalar cost
+# is explicit Ruby; the course vectorized training uses TensorFlow GradientTape.
 require_relative "../lib/style"
-require_relative "../lib/problem"
 require_relative "../lib/numeric"
-require_relative "../neural_networks/adam"
+require_relative "../lib/reference"
 module CollaborativeFiltering
-  class Model
-    attr_reader :movies, :users, :bias, :means
+  module_function
 
-    def initialize(ratings, features: 2, rng: Random.new(42))
-      @means = ratings.map do |row|
-        values = row.compact
-        values.empty? ? 0.0 : NumericTools.mean(values)
-      end
-      @movies = Array.new(ratings.size) { Array.new(features) { rng.rand - 0.5 } }
-      @users = Array.new(ratings[0].size) { Array.new(features) { rng.rand - 0.5 } }
-      @bias = Array.new(@users.size, 0.0)
-    end
+  def cost(movie_factors, user_factors, bias, ratings, mask, l2: 0.0)
+    total = 0.0
+    ratings.each_index do |i|
+      ratings[i].each_index do |j|
+        next unless mask[i][j] == 1
 
-    def parameters = @movies.flatten + @users.flatten + @bias
-
-    def parameters=(values)
-      offset = 0
-      [@movies, @users].each do |matrix|
-        matrix.each do |row|
-          row.each_index do |k|
-            row[k] = values[offset]
-            offset += 1
-          end
-        end
-      end
-      @bias.each_index do |j|
-        @bias[j] = values[offset]
-        offset += 1
+        error = NumericTools.dot(movie_factors[i], user_factors[j]) + bias[j] - ratings[i][j]
+        total += error * error
       end
     end
+    (total + l2 * (movie_factors.flatten + user_factors.flatten).sum { |v| v * v }) / 2.0
+  end
 
-    def predict(movie, user) = NumericTools.dot(@movies[movie], @users[user]) + @bias[user] + @means[movie]
+  def tensor_cost(x, w, b, y, r, lambda_)
+    tf = Reference.tensorflow
+    residual = tf.multiply(tf.subtract(tf.add(tf.linalg.matmul(x, tf.transpose(w)), b), y), r)
+    penalty = tf.multiply(lambda_ / 2.0, tf.add(tf.reduce_sum(tf.square(x)), tf.reduce_sum(tf.square(w))))
+    tf.add(tf.multiply(0.5, tf.reduce_sum(tf.square(residual))), penalty)
+  end
 
-    def gradients(ratings, l2: 0.01)
-      gx = @movies.map { |row| row.map { |v| l2 * v } }
-      gw = @users.map { |row| row.map { |v| l2 * v } }
-      gb = Array.new(@users.size, 0.0)
-      cost = l2 * (@movies.flatten + @users.flatten).sum { |v| v * v } / 2.0
-      ratings.each_with_index do |row, i|
-        row.each_with_index do |target, j|
-          next if target.nil?
-
-          error = predict(i, j) - target
-          cost += error**2 / 2.0
-          @movies[i].each_index do |k|
-            gx[i][k] += error * @users[j][k]
-            gw[j][k] += error * @movies[i][k]
-          end
-          gb[j] += error
-        end
+  def train(iterations: 200, features: 100, rate: 0.1, lambda_: 1.0)
+    np, tf = Reference.numpy, Reference.tensorflow
+    Reference.seed(1234)
+    y = np.loadtxt(CourseData.path(:collaborative, "data/small_movies_Y.csv"), delimiter: ",")
+    r = np.loadtxt(CourseData.path(:collaborative, "data/small_movies_R.csv"), delimiter: ",")
+    personal = np.zeros([Reference.shape(y)[0]])
+    { 2700 => 5, 2609 => 2, 929 => 5, 246 => 5, 2716 => 3, 1150 => 5, 382 => 2, 366 => 5, 622 => 5, 988 => 3, 2925 => 1, 2937 => 1, 793 => 5 }.each { |i, rating| personal.__setitem__(i, rating) }
+    y = np.column_stack([personal, y])
+    r = np.column_stack([np.not_equal(personal, 0).astype("float64"), r])
+    counts = np.sum(r, axis: 1, keepdims: true)
+    means = np.divide(np.sum(np.multiply(y, r), axis: 1, keepdims: true), np.maximum(counts, 1))
+    normalized = np.multiply(np.subtract(y, means), r)
+    movies, users = Reference.shape(y)
+    x = tf.Variable.new(tf.random.normal([movies, features], dtype: tf.float64), name: "X")
+    w = tf.Variable.new(tf.random.normal([users, features], dtype: tf.float64), name: "W")
+    b = tf.Variable.new(tf.random.normal([1, users], dtype: tf.float64), name: "b")
+    optimizer = tf.keras.optimizers.Adam.new(learning_rate: rate)
+    iterations.times do |iteration|
+      tape = tf.GradientTape.new
+      tape.__enter__
+      begin
+        objective = tensor_cost(x, w, b, normalized, r, lambda_)
+      ensure
+        tape.__exit__(nil, nil, nil)
       end
-      [cost, gx.flatten + gw.flatten + gb]
+      gradients = tape.gradient(objective, [x, w, b]).to_a
+      optimizer.apply_gradients(gradients.zip([x, w, b]).map { |gradient, variable| PyCall.tuple([gradient, variable]) })
+      yield iteration, objective.numpy.item if block_given?
     end
-
-    def fit(ratings, iterations: 1000, l2: 0.01, optimizer: Adam.new)
-      iterations.times do |i|
-        cost, gradient = gradients(ratings, l2: l2)
-        self.parameters = optimizer.step(parameters, gradient)
-        yield i + 1, cost if block_given?
-      end
-      self
-    end
+    prediction = np.add(np.add(np.matmul(x.numpy, np.transpose(w.numpy)), b.numpy), means)
+    [prediction, personal, Reference.shape(y)]
   end
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Collaborative Filtering", "observed mask · analytic factor gradients · seed 42")
-  ratings = Problem.ratings
-  model = CollaborativeFiltering::Model.new(ratings)
-  original = model.parameters
-  _cost, analytic = model.gradients(ratings)
-  errors = original.each_index.map do |j|
-    plus = original.dup
-    plus[j] += 1e-5
-    model.parameters = plus
-    right = model.gradients(ratings)[0]
-    minus = original.dup
-    minus[j] -= 1e-5
-    model.parameters = minus
-    left = model.gradients(ratings)[0]
-    (analytic[j] - (right - left) / 2e-5).abs
+  banner("Collaborative Movie Recommendations", "original 4778 movies · 443 users + personal ratings · TensorFlow")
+  np = Reference.numpy
+  load_matrix = ->(name) { np.loadtxt(CourseData.path(:collaborative, "data/small_movies_#{name}.csv"), delimiter: ",") }
+  x = Reference.columns(Reference.rows(load_matrix.call("X"), 0, 5), 0, 3)
+  w = Reference.columns(Reference.rows(load_matrix.call("W"), 0, 4), 0, 3)
+  b = Reference.columns(load_matrix.call("b").reshape([1, -1]), 0, 4)
+  y = Reference.columns(Reference.rows(load_matrix.call("Y"), 0, 5), 0, 4)
+  r = Reference.columns(Reference.rows(load_matrix.call("R"), 0, 5), 0, 4)
+  arrays = [x, w, y, r].map { |a| Reference.list(a).map(&:to_a) }
+  [0.0, 1.5].each do |lambda_|
+    explicit = CollaborativeFiltering.cost(arrays[0], arrays[1], Reference.list(b).first.to_a, arrays[2], arrays[3], l2: lambda_)
+    vectorized = CollaborativeFiltering.tensor_cost(x, w, b, y, r, lambda_).numpy.item
+    step("original 5-movie/4-user cost fixture: lambda=#{lambda_}; Ruby=#{explicit}; TensorFlow=#{vectorized}")
+    raise "Scalar collaborative cost differs" unless (explicit - vectorized).abs < 1e-8
   end
-  model.parameters = original
-  raise "factor gradient mismatch" unless errors.max < 1e-7
+  prediction, personal, shape = CollaborativeFiltering.train { |iteration, cost| step("iteration #{iteration}: cost=#{cost}") if (iteration % 20).zero? }
+  scores = Reference.columns(prediction, 0, 1).reshape([-1])
+  order = Reference.list(Reference.numpy.argsort(Reference.numpy.negative(scores)))
+  movies = PyCall.import_module("pandas").read_csv(CourseData.path(:collaborative, "data/small_movie_list.csv"), index_col: 0)
+  shown = 0
+  order.each do |index|
+    next if personal.__getitem__(index).item > 0
 
-  step("all #{original.size} factor/bias gradients checked; max error #{errors.max}")
-  model.fit(ratings) { |i, cost| step("it #{i}: regularized loss=#{cost.round(6)}") if i <= 2 || (i % 250).zero? }
-  squared = []
-  ratings.each_with_index do |row, i|
-    predictions = row.each_index.map { |j| model.predict(i, j) }
-    step("movie #{i} mean=#{model.means[i].round(2)} observed=#{row.inspect} predicted=#{vector(predictions)}")
-    row.each_with_index { |target, j| squared << (predictions[j] - target)**2 unless target.nil? }
+    title = movies.iloc.__getitem__(index).__getitem__("title").to_s
+    step("#{title}: predicted rating #{scores.__getitem__(index).item.round(3)}")
+    shown += 1
+    break if shown == 10
   end
-  raise "ratings not fitted" unless Math.sqrt(NumericTools.mean(squared)) < 0.1
+  raise "Movie prediction dimensions changed" unless shape == [4778, 444] && Reference.numpy.isfinite(prediction).all.item
 
-  [0, 1, 2].each do |user|
-    missing = ratings.each_index.select { |i| ratings[i][user].nil? }.sort_by { |i| -model.predict(i, user) }
-    note("user #{user}: unseen movies ranked #{missing.inspect}")
-  end
-  ok("observed ratings train the factors; missing cells are predictions, never targets")
+  ok("the original ratings matrix and personal-rating recommendation workflow are retained")
 end
