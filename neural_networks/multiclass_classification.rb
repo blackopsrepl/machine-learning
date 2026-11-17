@@ -20,7 +20,7 @@ module MulticlassClassification
 
   def train(epochs: 40)
     Reference.seed(1234)
-    x, y = Reference.digits(:multiclass_digits)
+    x, y = Reference.digits(:multiclass)
     model = build
     tf = Reference.tensorflow
     model.compile(loss: tf.keras.losses.SparseCategoricalCrossentropy.new(from_logits: true), optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.001))

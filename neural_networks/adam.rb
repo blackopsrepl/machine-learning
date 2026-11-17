@@ -35,7 +35,7 @@ if __FILE__ == $PROGRAM_NAME
   require_relative "../lib/course_data"
   include Style
   banner("Adam", "handwritten updates on the course digit-network gradient")
-  x, y = CourseData.digits(:binary_digits)
+  x, y = CourseData.digits(:binary)
   network = Backpropagation::Network.new([400, 25, 15, 1], activations: [:sigmoid, :sigmoid, :sigmoid], rng: Random.new(1234))
   optimizer = Adam.new(rate: 0.001)
   10.times do

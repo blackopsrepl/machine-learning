@@ -38,11 +38,13 @@ if __FILE__ == $PROGRAM_NAME
   include Style
   banner("Linear Regression", "course restaurant profits · handwritten batch GD")
   x, y = CourseData.supervised(:linear, "data/ex1data1.txt")
+  costs = [LinearRegression.loss(x, y, [0.0], 0.0)]
   w, b = LinearRegression.fit(x, y, rate: 0.01, iterations: 1500) do |i, weights, bias, cost, _dw, _db|
+    costs << cost
     step("iteration #{i}: cost=#{cost} w=#{weights.inspect} b=#{bias}") if i <= 3 || (i % 300).zero?
   end
   [3.5, 7.0].each { |population| step("population #{population * 10_000}: predicted profit $#{(LinearRegression.predict([population], w, b) * 10_000).round(2)}") }
-  raise "Course regression failed" unless LinearRegression.loss(x, y, w, b) < 5
+  raise "gradient descent increased the cost" unless costs.each_cons(2).all? { |a, c| c <= a + 1e-12 }
 
   ok("trained on all #{x.size} original observations")
 end

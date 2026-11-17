@@ -31,7 +31,7 @@ if __FILE__ == $PROGRAM_NAME
   require_relative "../lib/course_data"
   include Style
   banner("Gradient Checking", "actual digit inputs and course-sized handwritten networks")
-  [[:binary, :binary_digits, 1, [:sigmoid, :sigmoid, :sigmoid]], [:categorical, :multiclass_digits, 10, [:relu, :relu, :softmax]]].each do |loss, dataset, width, activations|
+  [[:binary, :binary, 1, [:sigmoid, :sigmoid, :sigmoid]], [:categorical, :multiclass, 10, [:relu, :relu, :softmax]]].each do |loss, dataset, width, activations|
     x, y = CourseData.digits(dataset)
     network = Backpropagation::Network.new([400, 25, 15, width], activations: activations, rng: Random.new(1234))
     indices = [0, 399, 10024, network.parameters.size - 1] + (0...network.parameters.size).to_a.sample(12, random: Random.new(42))

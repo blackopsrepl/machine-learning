@@ -64,12 +64,7 @@ module Reference
   end
 
   def digits(kind)
-    x = numpy.load(CourseData.path(kind, "data/X.npy"))
-    y = numpy.load(CourseData.path(kind, "data/y.npy"))
-    if kind == :binary_digits
-      x = x.__getitem__(PyCall::Slice.new(0, 1000))
-      y = y.__getitem__(PyCall::Slice.new(0, 1000))
-    end
-    [x, y]
+    x, y = CourseData.digits(kind)
+    [numpy.asarray(x), numpy.asarray(y).reshape([-1, 1])]
   end
 end

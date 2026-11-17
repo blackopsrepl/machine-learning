@@ -20,7 +20,7 @@ module BinaryClassification
 
   def train(epochs: 20)
     Reference.seed(1234)
-    x, y = Reference.digits(:binary_digits)
+    x, y = Reference.digits(:binary)
     model = build
     tf = Reference.tensorflow
     model.compile(loss: tf.keras.losses.BinaryCrossentropy.new, optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.001))

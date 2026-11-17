@@ -120,7 +120,7 @@ if __FILE__ == $PROGRAM_NAME
   require_relative "../lib/course_data"
   include Style
   banner("Manual Backpropagation", "original digit rows · 400→25→15→1 · handwritten extension")
-  x, y = CourseData.digits(:binary_digits)
+  x, y = CourseData.digits(:binary)
   network = Backpropagation::Network.new([400, 25, 15, 1], activations: [:sigmoid, :sigmoid, :sigmoid], rng: Random.new(1234))
   values, logits = network.forward(x.first)
   values.each_with_index { |a, layer| step("layer #{layer}: #{a.size} activations; first values #{vector(a.first(5))}") }

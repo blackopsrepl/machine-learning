@@ -35,7 +35,7 @@ if __FILE__ == $PROGRAM_NAME
           else
             BinaryClassification.train.first
           end
-  x, y = Reference.digits(:binary_digits)
+  x, y = Reference.digits(:binary)
   row = Reference.list(x.__getitem__(0))
   activation = row
   model.layers.to_a.each_with_index do |layer, i|
