@@ -1,98 +1,130 @@
 # frozen_string_literal: true
 
-# C3 W2 content-based filtering: actual user/movie features and ratings.
-# Two 256→128→32 towers, L2-normalized embeddings, dot-product rating prediction,
-# MSE and Adam(0.01), 30 epochs. IDs/count columns are excluded as in the notebook.
-require_relative "../lib/style"
-require_relative "../lib/reference"
+# Course C3 W2 assignment: content-based filtering with two neural towers.
+# Users drop id/count/average (14 features), items drop the id (16); both are
+# StandardScaler-scaled on all rows before the 80/20 split (the notebook's
+# order), targets MinMax-scaled to [−1,1] on the training split. Each tower is
+# 256→128→32 (ReLU, ReLU, linear); embeddings are L2-normalized, the rating is
+# their dot product, MSE + Adam(0.01) for 30 epochs in minibatches of 32.
+# Normalization's derivative: ∂û/∂u = (I − ûûᵀ)/‖u‖.
+# Run me: ruby recommenders/content_based_filtering.rb
+require_relative "../neural_networks/sequential"
+require_relative "../lib/numeric"
+require_relative "../lib/course_data"
+require_relative "../lib/sklearn_data"
 module ContentBasedFiltering
+  NORM_EPSILON = 1e-12
+
   module_function
 
-  def build(user_features, item_features)
-    tf = Reference.tensorflow
-    tower = lambda do
-      tf.keras.Sequential.new([
-                                tf.keras.layers.Dense.new(256, activation: "relu"),
-                                tf.keras.layers.Dense.new(128, activation: "relu"),
-                                tf.keras.layers.Dense.new(32, activation: "linear")
-                              ])
+  def scaler(rows) = NumericTools.fit_scaler(rows)
+  def scale(rows, s) = NumericTools.transform(rows, s)
+
+  def normalize(flat, width)
+    flat.each_slice(width).flat_map do |row|
+      norm = Math.sqrt([row.sum { |v| v * v }, NORM_EPSILON].max)
+      row.map { |v| v / norm }
     end
-    user_tower, item_tower = tower.call, tower.call
-    input_user = tf.keras.layers.Input(shape: [user_features])
-    input_item = tf.keras.layers.Input(shape: [item_features])
-    user_embedding = tf.linalg.l2_normalize(user_tower.__call__(input_user), axis: 1)
-    item_embedding = tf.linalg.l2_normalize(item_tower.__call__(input_item), axis: 1)
-    output = tf.keras.layers.Dot.new(axes: 1).__call__([user_embedding, item_embedding])
-    model = tf.keras.Model.new(inputs: [input_user, input_item], outputs: output)
-    item_model = tf.keras.Model.new(inputs: input_item, outputs: item_embedding)
-    [model, item_model]
   end
 
-  def train(epochs: 30)
-    np, tf = Reference.numpy, Reference.tensorflow
-    Reference.seed(1)
-    user = np.loadtxt(CourseData.path(:content, "data/content_user_train.csv"), delimiter: ",")
-    item = np.loadtxt(CourseData.path(:content, "data/content_item_train.csv"), delimiter: ",")
-    target = np.loadtxt(CourseData.path(:content, "data/content_y_train.csv"), delimiter: ",")
-    preprocessing = PyCall.import_module("sklearn.preprocessing")
-    user_scaler, item_scaler = preprocessing.StandardScaler.new, preprocessing.StandardScaler.new
-    # Preserve the notebook's fit-before-split ordering; this source leakage is documented.
-    scaled_user = user_scaler.fit_transform(user)
-    scaled_item = item_scaler.fit_transform(item)
-    split = PyCall.import_module("sklearn.model_selection").train_test_split(scaled_user, scaled_item, target, train_size: 0.8, shuffle: true, random_state: 1).to_a
-    u_train, u_test, i_train, i_test, y_train, y_test = split
-    target_scaler = preprocessing.MinMaxScaler.new(PyCall.tuple([-1, 1]))
-    normalized_train = target_scaler.fit_transform(y_train.reshape([-1, 1]))
-    normalized_test = target_scaler.transform(y_test.reshape([-1, 1]))
-    model, item_model = build(Reference.shape(user)[1] - 3, Reference.shape(item)[1] - 1)
-    tf.random.set_seed(1)
-    model.compile(optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.01), loss: tf.keras.losses.MeanSquaredError.new)
-    tf.random.set_seed(1)
-    history = model.fit([Reference.columns(u_train, 3), Reference.columns(i_train, 1)], normalized_train, epochs: epochs, batch_size: 32, shuffle: true, verbose: 0)
-    held_out = model.evaluate([Reference.columns(u_test, 3), Reference.columns(i_test, 1)], normalized_test, verbose: 0)
-    [model, item_model, history, held_out, user, item, user_scaler, item_scaler, target_scaler]
-  end
+  class TwoTower
+    attr_reader :user, :item
 
-  def square_distance(a, b) = a.zip(b).sum { |x, y| (x - y)**2 }
+    def initialize(user_features, item_features, rng: Random.new(1))
+      tower = [[256, :relu], [128, :relu], [32, :linear]]
+      @user = Sequential.new(user_features, tower, rng: rng)
+      @item = Sequential.new(item_features, tower, rng: rng)
+      @optimizer = Adam.new(learning_rate: 0.01)
+    end
+
+    def tensors = @user.tensors + @item.tensors
+
+    def embed(tower, rows) = ContentBasedFiltering.normalize(tower.forward(rows)[1].last, 32).each_slice(32).to_a
+    def predict(users, items) = embed(@user, users).zip(embed(@item, items)).map { |u, v| NumericTools.dot(u, v) }
+
+    def train_on_batch(users, items, targets)
+      ua, uz = @user.forward(users)
+      ia, iz = @item.forward(items)
+      batch = users.size
+      du = Array.new(batch * 32, 0.0)
+      dv = Array.new(batch * 32, 0.0)
+      loss = 0.0
+      batch.times do |b|
+        u = uz.last[b * 32, 32]
+        v = iz.last[b * 32, 32]
+        nu = Math.sqrt([u.sum { |x| x * x }, NORM_EPSILON].max)
+        nv = Math.sqrt([v.sum { |x| x * x }, NORM_EPSILON].max)
+        uh, vh = u.map { |x| x / nu }, v.map { |x| x / nv }
+        score = NumericTools.dot(uh, vh)
+        error = score - targets[b]
+        loss += error * error
+        ds = 2.0 * error / batch
+        32.times do |k|
+          du[b * 32 + k] = ds * (vh[k] - score * uh[k]) / nu
+          dv[b * 32 + k] = ds * (uh[k] - score * vh[k]) / nv
+        end
+      end
+      gu, = @user.backward(ua, uz, du)
+      gi, = @item.backward(ia, iz, dv)
+      @optimizer.apply(tensors, gu + gi)
+      loss / batch
+    end
+
+    def fit(users, items, targets, epochs: 30, rng: Random.new(1))
+      order = (0...users.size).to_a
+      Array.new(epochs) do |epoch|
+        order = order.shuffle(random: rng)
+        total = 0.0
+        order.each_slice(32) { |ids| total += train_on_batch(ids.map { |i| users[i] }, ids.map { |i| items[i] }, ids.map { |i| targets[i] }) * ids.size }
+        (total / users.size).tap { |loss| yield epoch + 1, loss if block_given? }
+      end
+    end
+  end
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Neural Content-Based Movie Recommendations", "58187 original training pairs · TensorFlow/Keras")
-  model, item_model, history, test_loss, raw_users, _raw_items, user_scaler, item_scaler, target_scaler = ContentBasedFiltering.train
-  Reference.epoch_trace(history)
-  step("held-out MSE=#{test_loss}; user input=14, item input=16; towers 256→128→32")
-  np = Reference.numpy
-  items = np.loadtxt(CourseData.path(:content, "data/content_item_vecs.csv"), delimiter: ",")
-  scaled_items = Reference.columns(item_scaler.transform(items), 1)
-  metadata = PyCall.import_module("pandas").read_csv(CourseData.path(:content, "data/content_movie_list.csv")).set_index("movieId")
-  new_user = np.asarray([[5000, 3, 1, 1, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 5, 5, 1]])
-  user_inputs = Reference.columns(user_scaler.transform(np.tile(new_user, [Reference.shape(items)[0], 1])), 3)
-  predictions = target_scaler.inverse_transform(model.predict([user_inputs, scaled_items], verbose: 0)).reshape([-1])
-  order = Reference.list(np.argsort(np.negative(predictions))).first(10)
-  order.each do |index|
-    id = items.__getitem__(PyCall.tuple([index, 0])).item.to_i
-    title = metadata.loc.__getitem__(id).__getitem__("title").to_s
-    step("new user: #{title}, predicted rating #{predictions.__getitem__(index).item.round(3)}")
+  banner("Content-Based Filtering", "user and movie towers · 256→128→32 · normalized dot product")
+  users = CourseData.table(:content, "data/content_user_train.csv")
+  items = CourseData.table(:content, "data/content_item_train.csv")
+  ratings = CourseData.table(:content, "data/content_y_train.csv").map(&:first)
+  vectors = CourseData.table(:content, "data/content_item_vecs.csv")
+  _header, catalogue = CourseData.csv(:content, "data/content_movie_list.csv")
+  movie = catalogue.to_h { |id, title, genres| [id.to_i, [title, genres]] }
+  step("#{ratings.size} training rows; user features #{users.first.size - 3}, item features #{items.first.size - 1}; #{vectors.size} item vectors")
+  user_scaler, item_scaler = ContentBasedFiltering.scaler(users), ContentBasedFiltering.scaler(items)
+  scaled_users, scaled_items = ContentBasedFiltering.scale(users, user_scaler), ContentBasedFiltering.scale(items, item_scaler)
+  item_train, item_test = SklearnData.train_test_split(scaled_items, train_size: 0.8, random_state: 1)
+  user_train, user_test = SklearnData.train_test_split(scaled_users, train_size: 0.8, random_state: 1)
+  y_train, y_test = SklearnData.train_test_split(ratings, train_size: 0.8, random_state: 1)
+  low, high = y_train.minmax
+  to_unit = ->(v) { 2.0 * (v - low) / (high - low) - 1.0 }
+  to_rating = ->(v) { (v + 1.0) * (high - low) / 2.0 + low }
+  model = ContentBasedFiltering::TwoTower.new(14, 16)
+  model.fit(user_train.map { |r| r.drop(3) }, item_train.map { |r| r.drop(1) }, y_train.map(&to_unit)) { |epoch, loss| step("epoch #{epoch}: loss=#{loss}") }
+  test_loss = model.predict(user_test.map { |r| r.drop(3) }, item_test.map { |r| r.drop(1) }).zip(y_test.map(&to_unit)).sum { |p, t| (p - t)**2 } / y_test.size
+  step("test MSE (scaled ratings)=#{test_loss}")
+  scaled_vectors = ContentBasedFiltering.scale(vectors, item_scaler).map { |r| r.drop(1) }
+  new_user = [5000, 3, 1.0, 1.0, 1, 1, 1, 5, 1, 1, 1, 1, 1, 1, 5, 5, 1]
+  predicted = model.predict(Array.new(vectors.size) { ContentBasedFiltering.scale([new_user], user_scaler).first.drop(3) }, scaled_vectors).map(&to_rating)
+  predicted.each_index.sort_by { |i| -predicted[i] }.first(10).each do |i|
+    id = vectors[i][0].to_i
+    step("new user (comedy, romance, sci-fi): #{predicted[i].round(1)} for #{movie[id][0]} [#{movie[id][1]}]")
   end
-  # Existing user 36 is taken from actual user rows, not invented preferences.
-  ids = np.where(np.equal(Reference.columns(raw_users, 0, 1).reshape([-1]), 36)).to_a.first
-  raise "Original example user 36 missing" if ids.size == 0
+  rated = users.each_index.select { |i| users[i][0].to_i == 36 }.to_h { |i| [items[i][0].to_i, ratings[i]] }
+  existing = users.find { |row| row[0].to_i == 36 }
+  raise "user 36 is missing" unless existing
 
-  existing = raw_users.__getitem__(ids.__getitem__(0)).reshape([1, -1])
-  existing_inputs = Reference.columns(user_scaler.transform(np.tile(existing, [Reference.shape(items)[0], 1])), 3)
-  existing_scores = target_scaler.inverse_transform(model.predict([existing_inputs, scaled_items], verbose: 0)).reshape([-1])
-  step("existing user 36: first predicted ratings #{Reference.list(existing_scores).first(5)}")
-  vectors = item_model.predict(scaled_items, verbose: 0)
-  5.times do |i|
-    distances = np.sum(np.square(np.subtract(vectors, vectors.__getitem__(i))), axis: 1)
-    distances.__setitem__(i, np.inf)
-    other = np.argmin(distances).item
-    a = items.__getitem__(PyCall.tuple([i, 0])).item.to_i
-    b = items.__getitem__(PyCall.tuple([other, 0])).item.to_i
-    step("similar movies: #{metadata.loc.__getitem__(a).__getitem__('title')} → #{metadata.loc.__getitem__(b).__getitem__('title')}")
-    raise "Self match retained" if i == other
+  scores = model.predict(Array.new(vectors.size) { ContentBasedFiltering.scale([existing], user_scaler).first.drop(3) }, scaled_vectors).map(&to_rating)
+  scores.each_index.sort_by { |i| -scores[i] }.select { |i| rated.key?(vectors[i][0].to_i) }.first(10).each do |i|
+    id = vectors[i][0].to_i
+    step("user 36: predicted #{scores[i].round(1)}, rated #{rated[id]} for #{movie[id][0]}")
   end
-  raise "Content recommender returned nonfinite results" unless test_loss.finite? && np.isfinite(predictions).all.item
+  embeddings = model.embed(model.item, scaled_vectors)
+  [vectors.size, 50].min.times do |i|
+    j = (0...vectors.size).reject { |k| k == i }.min_by { |k| embeddings[i].zip(embeddings[k]).sum { |a, c| (a - c)**2 } }
+    note("#{movie[vectors[i][0].to_i][0]} [#{movie[vectors[i][0].to_i][1]}] ↔ #{movie[vectors[j][0].to_i][0]} [#{movie[vectors[j][0].to_i][1]}]") if i < 10
+  end
+  raise "content-based predictions are not finite" unless (predicted + scores).all?(&:finite?)
 
-  ok("real movie metadata supports new-user, existing-user and similar-item recommendations")
+  ok("ratings predicted from user and movie features; similar movies from embeddings")
 end

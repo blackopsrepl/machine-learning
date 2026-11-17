@@ -1,98 +1,110 @@
 # frozen_string_literal: true
 
-# C3 W2 collaborative filtering: original movie/user matrices, 100 latent features,
-# observed-rating mask, movie-mean normalization and user biases. The scalar cost
-# is explicit Ruby; the course vectorized training uses TensorFlow GradientTape.
+# Course C3 W2 assignment: collaborative filtering on the 4778×443 ratings
+# matrix plus a column of the notebook's own ratings. Ratings are normalized
+# by each movie's observed mean (Σ Y·R / (Σ R + 1e-12)); movie features X,
+# user weights W and user biases b (100 features, standard-normal start)
+# minimize J = ½Σ_R (x_i·w_j + b_j − y_ij)² + λ/2(ΣX² + ΣW²) with λ=1 over
+# 200 Adam(0.1) steps. Gradients are written out, summing only rated cells:
+# ∂J/∂x_i = Σ_j e_ij w_j + λx_i, ∂J/∂w_j = Σ_i e_ij x_i + λw_j, ∂J/∂b_j = Σ_i e_ij.
+# Run me: ruby recommenders/collaborative_filtering.rb
 require_relative "../lib/style"
 require_relative "../lib/numeric"
-require_relative "../lib/reference"
+require_relative "../lib/course_data"
+require_relative "../lib/numpy_random"
+require_relative "../neural_networks/adam"
 module CollaborativeFiltering
+  MY_RATINGS = { 2700 => 5, 2609 => 2, 929 => 5, 246 => 5, 2716 => 3, 1150 => 5, 382 => 2, 366 => 5, 622 => 5, 988 => 3, 2925 => 1, 2937 => 1, 793 => 5 }.freeze
+
   module_function
 
-  def cost(movie_factors, user_factors, bias, ratings, mask, l2: 0.0)
-    total = 0.0
-    ratings.each_index do |i|
-      ratings[i].each_index do |j|
-        next unless mask[i][j] == 1
+  # The assignment's loop form of the cost, X/W as row arrays and b a vector.
+  def cost(x, w, b, y, r, lambda_)
+    j = 0.0
+    y.each_index do |i|
+      w.each_index do |u|
+        next unless r[i][u] == 1
 
-        error = NumericTools.dot(movie_factors[i], user_factors[j]) + bias[j] - ratings[i][j]
-        total += error * error
+        j += (NumericTools.dot(w[u], x[i]) + b[u] - y[i][u])**2
       end
     end
-    (total + l2 * (movie_factors.flatten + user_factors.flatten).sum { |v| v * v }) / 2.0
+    j / 2 + lambda_ / 2.0 * (w.flatten.sum { |v| v * v } + x.flatten.sum { |v| v * v })
   end
 
-  def tensor_cost(x, w, b, y, r, lambda_)
-    tf = Reference.tensorflow
-    residual = tf.multiply(tf.subtract(tf.add(tf.linalg.matmul(x, tf.transpose(w)), b), y), r)
-    penalty = tf.multiply(lambda_ / 2.0, tf.add(tf.reduce_sum(tf.square(x)), tf.reduce_sum(tf.square(w))))
-    tf.add(tf.multiply(0.5, tf.reduce_sum(tf.square(residual))), penalty)
+  def normalize(y, r)
+    means = y.each_index.map { |i| y[i].each_index.sum { |u| y[i][u] * r[i][u] } / (r[i].sum + 1e-12) }
+    [y.each_index.map { |i| y[i].each_index.map { |u| y[i][u] - means[i] * r[i][u] } }, means]
   end
 
-  def train(iterations: 200, features: 100, rate: 0.1, lambda_: 1.0)
-    np, tf = Reference.numpy, Reference.tensorflow
-    Reference.seed(1234)
-    y = np.loadtxt(CourseData.path(:collaborative, "data/small_movies_Y.csv"), delimiter: ",")
-    r = np.loadtxt(CourseData.path(:collaborative, "data/small_movies_R.csv"), delimiter: ",")
-    personal = np.zeros([Reference.shape(y)[0]])
-    { 2700 => 5, 2609 => 2, 929 => 5, 246 => 5, 2716 => 3, 1150 => 5, 382 => 2, 366 => 5, 622 => 5, 988 => 3, 2925 => 1, 2937 => 1, 793 => 5 }.each { |i, rating| personal.__setitem__(i, rating) }
-    y = np.column_stack([personal, y])
-    r = np.column_stack([np.not_equal(personal, 0).astype("float64"), r])
-    counts = np.sum(r, axis: 1, keepdims: true)
-    means = np.divide(np.sum(np.multiply(y, r), axis: 1, keepdims: true), np.maximum(counts, 1))
-    normalized = np.multiply(np.subtract(y, means), r)
-    movies, users = Reference.shape(y)
-    x = tf.Variable.new(tf.random.normal([movies, features], dtype: tf.float64), name: "X")
-    w = tf.Variable.new(tf.random.normal([users, features], dtype: tf.float64), name: "W")
-    b = tf.Variable.new(tf.random.normal([1, users], dtype: tf.float64), name: "b")
-    optimizer = tf.keras.optimizers.Adam.new(learning_rate: rate)
+  # Flat row-major parameters; ratings as [movie, user, normalized rating].
+  def train(ynorm, observed, movies, users, features: 100, lambda_: 1.0, iterations: 200, rate: 0.1, seed: 1234)
+    rng = NumpyRandom::RandomState.new(seed)
+    w = Array.new(users * features) { rng.standard_normal }
+    x = Array.new(movies * features) { rng.standard_normal }
+    b = Array.new(users) { rng.standard_normal }
+    optimizer = Adam.new(learning_rate: rate)
     iterations.times do |iteration|
-      tape = tf.GradientTape.new
-      tape.__enter__
-      begin
-        objective = tensor_cost(x, w, b, normalized, r, lambda_)
-      ensure
-        tape.__exit__(nil, nil, nil)
+      gx = x.map { |v| lambda_ * v }
+      gw = w.map { |v| lambda_ * v }
+      gb = Array.new(users, 0.0)
+      j = lambda_ / 2.0 * (x.sum { |v| v * v } + w.sum { |v| v * v })
+      observed.each do |i, u|
+        xo, wo = i * features, u * features
+        prediction = b[u]
+        k = 0
+        while k < features
+          prediction += x[xo + k] * w[wo + k]
+          k += 1
+        end
+        error = prediction - ynorm[i][u]
+        j += error * error / 2
+        gb[u] += error
+        k = 0
+        while k < features
+          gx[xo + k] += error * w[wo + k]
+          gw[wo + k] += error * x[xo + k]
+          k += 1
+        end
       end
-      gradients = tape.gradient(objective, [x, w, b]).to_a
-      optimizer.apply_gradients(gradients.zip([x, w, b]).map { |gradient, variable| PyCall.tuple([gradient, variable]) })
-      yield iteration, objective.numpy.item if block_given?
+      optimizer.apply([w, x, b], [gw, gx, gb])
+      yield iteration, j if block_given?
     end
-    prediction = np.add(np.add(np.matmul(x.numpy, np.transpose(w.numpy)), b.numpy), means)
-    [prediction, personal, Reference.shape(y)]
+    [x, w, b]
   end
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Collaborative Movie Recommendations", "original 4778 movies · 443 users + personal ratings · TensorFlow")
-  np = Reference.numpy
-  load_matrix = ->(name) { np.loadtxt(CourseData.path(:collaborative, "data/small_movies_#{name}.csv"), delimiter: ",") }
-  x = Reference.columns(Reference.rows(load_matrix.call("X"), 0, 5), 0, 3)
-  w = Reference.columns(Reference.rows(load_matrix.call("W"), 0, 4), 0, 3)
-  b = Reference.columns(load_matrix.call("b").reshape([1, -1]), 0, 4)
-  y = Reference.columns(Reference.rows(load_matrix.call("Y"), 0, 5), 0, 4)
-  r = Reference.columns(Reference.rows(load_matrix.call("R"), 0, 5), 0, 4)
-  arrays = [x, w, y, r].map { |a| Reference.list(a).map(&:to_a) }
-  [0.0, 1.5].each do |lambda_|
-    explicit = CollaborativeFiltering.cost(arrays[0], arrays[1], Reference.list(b).first.to_a, arrays[2], arrays[3], l2: lambda_)
-    vectorized = CollaborativeFiltering.tensor_cost(x, w, b, y, r, lambda_).numpy.item
-    step("original 5-movie/4-user cost fixture: lambda=#{lambda_}; Ruby=#{explicit}; TensorFlow=#{vectorized}")
-    raise "Scalar collaborative cost differs" unless (explicit - vectorized).abs < 1e-8
+  banner("Collaborative Filtering", "4778 movies × 443 users + your ratings · 100 features · Adam")
+  y = CourseData.table(:collaborative, "data/small_movies_Y.csv")
+  r = CourseData.table(:collaborative, "data/small_movies_R.csv").map { |row| row.map(&:to_i) }
+  x_pre = CourseData.table(:collaborative, "data/small_movies_X.csv")
+  w_pre = CourseData.table(:collaborative, "data/small_movies_W.csv")
+  b_pre = CourseData.table(:collaborative, "data/small_movies_b.csv").first
+  _header, movies = CourseData.csv(:collaborative, "data/small_movie_list.csv")
+  step("Y #{y.size}×#{y.first.size}; #{r.flatten.sum} ratings; average rating of movie 0: #{(y[0].each_index.sum { |u| y[0][u] * r[0][u] } / r[0].sum.to_f).round(3)}")
+  x_r, w_r, b_r = x_pre.first(5).map { |row| row.first(3) }, w_pre.first(4).map { |row| row.first(3) }, b_pre.first(4)
+  y_r, r_r = y.first(5).map { |row| row.first(4) }, r.first(5).map { |row| row.first(4) }
+  [0.0, 1.5].each { |lambda_| step("reduced 5×4 problem, 3 features, λ=#{lambda_}: cost=#{CollaborativeFiltering.cost(x_r, w_r, b_r, y_r, r_r, lambda_).round(2)}") }
+  mine = Array.new(y.size, 0.0)
+  CollaborativeFiltering::MY_RATINGS.each { |i, rating| mine[i] = rating.to_f }
+  CollaborativeFiltering::MY_RATINGS.each { |i, rating| note("you rated #{rating}: #{movies[i][3]}") }
+  y = y.each_index.map { |i| [mine[i]] + y[i] }
+  r = r.each_index.map { |i| [mine[i].zero? ? 0 : 1] + r[i] }
+  ynorm, means = CollaborativeFiltering.normalize(y, r)
+  observed = []
+  r.each_index { |i| r[i].each_index { |u| observed << [i, u] if r[i][u] == 1 } }
+  costs = []
+  x, w, b = CollaborativeFiltering.train(ynorm, observed, y.size, y.first.size) do |iteration, cost|
+    costs << cost
+    step("iteration #{iteration}: cost=#{cost.round(1)}") if (iteration % 20).zero?
   end
-  prediction, personal, shape = CollaborativeFiltering.train { |iteration, cost| step("iteration #{iteration}: cost=#{cost}") if (iteration % 20).zero? }
-  scores = Reference.columns(prediction, 0, 1).reshape([-1])
-  order = Reference.list(Reference.numpy.argsort(Reference.numpy.negative(scores)))
-  movies = PyCall.import_module("pandas").read_csv(CourseData.path(:collaborative, "data/small_movie_list.csv"), index_col: 0)
-  shown = 0
-  order.each do |index|
-    next if personal.__getitem__(index).item > 0
+  predictions = Array.new(y.size) { |i| NumericTools.dot(x[i * 100, 100], w[0, 100]) + b[0] + means[i] }
+  order = predictions.each_index.sort_by { |i| -predictions[i] }
+  order.first(17).each { |i| step("predicting rating #{predictions[i].round(2)} for #{movies[i][3]}") unless mine[i].positive? }
+  CollaborativeFiltering::MY_RATINGS.each { |i, rating| step("original #{rating}, predicted #{predictions[i].round(2)} for #{movies[i][3]}") }
+  popular = order.first(300).select { |i| movies[i][2].to_i > 20 }.sort_by { |i| -movies[i][1].to_f }.first(5)
+  popular.each { |i| note("top-300 prediction with >20 ratings: #{movies[i][3]} (mean #{movies[i][1].to_f.round(2)}, predicted #{predictions[i].round(2)})") }
+  raise "Adam did not reduce the collaborative-filtering cost" unless costs.last < costs.first
 
-    title = movies.iloc.__getitem__(index).__getitem__("title").to_s
-    step("#{title}: predicted rating #{scores.__getitem__(index).item.round(3)}")
-    shown += 1
-    break if shown == 10
-  end
-  raise "Movie prediction dimensions changed" unless shape == [4778, 444] && Reference.numpy.isfinite(prediction).all.item
-
-  ok("the original ratings matrix and personal-rating recommendation workflow are retained")
+  ok("unrated cells predicted from learned movie and user factors")
 end
