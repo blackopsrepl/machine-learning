@@ -1,43 +1,53 @@
 # frozen_string_literal: true
 
-# Central finite differences check the actual handwritten digit-network gradient.
-# The default demonstration checks selected parameters across every layer on
-# original images; callers may request all parameters or another explicit subset.
-require_relative "backpropagation"
+# Central differences (L(θ+ε)−L(θ−ε))/2ε against the training engine's own
+# backpropagation, for each loss the course uses and for L2 kernels.
+# Run me: ruby neural_networks/gradient_check.rb
+require_relative "sequential"
 module GradientCheck
   module_function
 
-  def check(network, x, y, loss:, l2: 0.3, epsilon: 1e-5, indices: nil)
-    original = network.parameters
-    _cost, analytic = network.gradients(x, y, loss: loss, l2: l2)
-    indices ||= original.each_index.to_a
-    numerical = indices.map do |j|
-      plus = original.dup
-      plus[j] += epsilon
-      network.parameters = plus
-      right = network.gradients(x, y, loss: loss, l2: l2)[0]
-      minus = original.dup
-      minus[j] -= epsilon
-      network.parameters = minus
-      left = network.gradients(x, y, loss: loss, l2: l2)[0]
-      (right - left) / (2 * epsilon)
-    end
-    indices.zip(numerical).map { |j, n| (analytic[j] - n).abs }.max
-  ensure
-    network.parameters = original if original
+  def batch_loss(model, x, y)
+    activations, logits = model.forward(x)
+    loss, delta = model.loss_and_delta(activations.last, logits.last, y, x.size)
+    [loss + model.regularization, activations, logits, delta]
+  end
+
+  # Maximum |analytic − numerical| over the selected (tensor, index) pairs.
+  def check(model, x, y, picks, epsilon: 1e-6)
+    _loss, activations, logits, delta = batch_loss(model, x, y)
+    analytic, = model.backward(activations, logits, delta)
+    picks.map do |t, i|
+      tensor = model.tensors[t]
+      original = tensor[i]
+      tensor[i] = original + epsilon
+      plus = batch_loss(model, x, y).first
+      tensor[i] = original - epsilon
+      minus = batch_loss(model, x, y).first
+      tensor[i] = original
+      (analytic[t][i] - (plus - minus) / (2 * epsilon)).abs
+    end.max
   end
 end
 if __FILE__ == $PROGRAM_NAME
   require_relative "../lib/course_data"
   include Style
-  banner("Gradient Checking", "actual digit inputs and course-sized handwritten networks")
-  [[:binary, :binary, 1, [:sigmoid, :sigmoid, :sigmoid]], [:categorical, :multiclass, 10, [:relu, :relu, :softmax]]].each do |loss, dataset, width, activations|
-    x, y = CourseData.digits(dataset)
-    network = Backpropagation::Network.new([400, 25, 15, width], activations: activations, rng: Random.new(1234))
-    indices = [0, 399, 10024, network.parameters.size - 1] + (0...network.parameters.size).to_a.sample(12, random: Random.new(42))
-    error = GradientCheck.check(network, x.first(2), y.first(2), loss: loss, indices: indices)
-    step("#{loss}: #{indices.size} selected derivatives across #{network.parameters.size} parameters; max central-difference error=#{error}")
-    raise "Digit network derivative failed" unless error < 1e-7
+  banner("Gradient Checking", "finite differences against the engine's backpropagation")
+  rng = Random.new(42)
+  cases = [
+    ["binary digits, BCE", :binary, [[25, :sigmoid], [15, :sigmoid], [1, :sigmoid]], :binary_crossentropy],
+    ["ten digits, sparse CE from logits", :multiclass, [[25, :relu], [15, :relu], [10, :linear]], :sparse_categorical_crossentropy],
+    ["L2(0.1) ReLU regression, MSE", :binary, [[12, :relu, { l2: 0.1 }], [3, :linear]], :mse]
+  ]
+  cases.each do |label, kind, layers, loss|
+    x, y = CourseData.digits(kind)
+    rows = (0...x.size).to_a.sample(8, random: rng)
+    targets = loss == :mse ? rows.map { |i| [x[i].sum / 100, x[i][210], y[i]] } : rows.map { |i| y[i] }
+    model = Sequential.new(400, layers, rng: Random.new(7)).compile(loss: loss, optimizer: Adam.new)
+    picks = model.tensors.each_with_index.flat_map { |tensor, t| (0...tensor.size).to_a.sample(6, random: rng).map { |i| [t, i] } }
+    error = GradientCheck.check(model, rows.map { |i| x[i] }, targets, picks)
+    step("#{label}: #{picks.size} parameters across #{model.tensors.size} tensors; max |analytic−numerical|=#{error}")
+    raise "#{label}: backpropagation disagrees with finite differences" unless error < 1e-7
   end
-  ok("finite differences exercise the actual image model dimensions")
+  ok("every loss and the L2 penalty differentiate correctly through every layer")
 end

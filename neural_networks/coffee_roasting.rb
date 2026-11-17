@@ -1,53 +1,67 @@
 # frozen_string_literal: true
 
-# Original coffee generator: PCG64 seed 2, 200 temperature/duration pairs.
-# Preserve normalization, 1000-fold tiling, 2→3→1 sigmoid model, Adam(.01),
-# ten epochs, and the notebook's supplied prediction weights after training.
-require_relative "dense_layer"
-require_relative "../lib/reference"
+# Course C2 W1 coffee-roasting labs: 200 (temperature, duration) roasts from
+# NumPy's default_rng(2), good when 175<t<260, 12<d<15 and d≤21−3t/85.
+# Keras Normalization: (x−mean)/max(√variance, 1e-7) with population variance.
+# The TF lab tiles the data 1000×, trains 2→3→1 sigmoid units with BCE and
+# Adam(0.01) for 10 epochs, then predicts with the weights the notebook supplies.
+# Run me: ruby neural_networks/coffee_roasting.rb
+require_relative "sequential"
+require_relative "../lib/numpy_random"
 module CoffeeRoasting
+  # Weights the TF notebook loads after training, so results do not depend on the run.
+  W1 = [[-8.94, 0.29, 12.89], [-0.17, -7.34, 10.79]].freeze
+  B1 = [-9.87, -9.28, 1.01].freeze
+  W2 = [[-31.38], [-27.86], [-32.79]].freeze
+  B2 = [15.54].freeze
+
   module_function
 
   def data
-    np = Reference.numpy
-    x = np.random.default_rng(2).random(400).reshape([-1, 2])
-    x.__setitem__(PyCall.tuple([PyCall::Slice.new(nil), 0]), np.add(np.multiply(Reference.columns(x, 0, 1).reshape([-1]), 135), 150))
-    x.__setitem__(PyCall.tuple([PyCall::Slice.new(nil), 1]), np.add(np.multiply(Reference.columns(x, 1, 2).reshape([-1]), 4), 11.5))
-    labels = Reference.list(x).map do |row|
-      t, d = row.to_a
-      t > 175 && t < 260 && d > 12 && d < 15 && d <= (-3.0 / 85 * t + 21) ? 1.0 : 0.0
+    rng = NumpyRandom::Generator.new(2)
+    x = Array.new(200) { [rng.random, rng.random] }
+    x.each do |row|
+      row[1] = row[1] * 4 + 11.5
+      row[0] = row[0] * (285 - 150) + 150
     end
-    [x, np.asarray(labels).reshape([-1, 1])]
+    y = x.map do |t, d|
+      limit = -3.0 / (260 - 175) * t + 21
+      t > 175 && t < 260 && d > 12 && d < 15 && d <= limit ? 1 : 0
+    end
+    [x, y]
   end
+
+  def normalization(x)
+    means = x.transpose.map { |column| column.sum / column.size }
+    scales = x.transpose.each_with_index.map do |column, j|
+      [Math.sqrt(column.sum { |v| (v - means[j])**2 } / column.size), 1e-7].max
+    end
+    ->(rows) { rows.map { |row| row.each_with_index.map { |v, j| (v - means[j]) / scales[j] } } }
+  end
+
+  # Keras stores kernels as inputs×units; Sequential stores units×inputs.
+  def keras_weights(w, b) = [w.transpose.flatten, b.dup]
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Coffee Roasting", "original temperature/duration data · library training and handwritten inference")
-  np, tf = Reference.numpy, Reference.tensorflow
+  banner("Coffee Roasting", "course data generator · normalization · 2→3→1 sigmoid network")
   x, y = CoffeeRoasting.data
-  normalization = tf.keras.layers.Normalization.new(axis: -1)
-  normalization.adapt(x)
-  xn = normalization.__call__(x)
-  train_x, train_y = np.tile(xn, [1000, 1]), np.tile(y, [1000, 1])
-  Reference.seed(1234)
-  model = tf.keras.Sequential.new([tf.keras.Input(shape: [2]), tf.keras.layers.Dense.new(3, activation: "sigmoid", name: "layer1"), tf.keras.layers.Dense.new(1, activation: "sigmoid", name: "layer2")])
-  model.compile(loss: tf.keras.losses.BinaryCrossentropy.new, optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.01))
-  history = model.fit(train_x, train_y, epochs: 10, batch_size: 32, verbose: 0)
-  Reference.epoch_trace(history)
-  step("trained #{Reference.shape(train_x).inspect} tiled observations; original #{Reference.shape(x).inspect}")
-  w1, b1 = [[-8.94, 0.29, 12.89], [-0.17, -7.34, 10.79]], [-9.87, -9.28, 1.01]
-  w2, b2 = [[-31.38], [-27.86], [-32.79]], [15.54]
-  model.get_layer("layer1").set_weights([np.asarray(w1), np.asarray(b1)])
-  model.get_layer("layer2").set_weights([np.asarray(w2), np.asarray(b2)])
-  test = normalization.__call__(np.asarray([[200, 13.9], [200, 17]]))
-  prediction = model.predict(test, verbose: 0)
-  step("course supplied-weight predictions #{prediction}; decisions #{np.greater_equal(prediction, 0.5).astype('int32')}")
-  Reference.list(test.numpy).each_with_index do |row, i|
-    hidden, _ = DenseLayer.forward(row.to_a, w1.transpose, b1)
-    output, _ = DenseLayer.forward(hidden, w2.transpose, b2)
-    expected = prediction.__getitem__(i).__getitem__(0).item
-    step("handwritten forward pass #{i}: #{output.first}")
-    raise "Coffee inference failed" unless (output.first - expected).abs < 1e-5
-  end
-  ok("the original coffee experiment retains both training and explicit forward propagation")
+  step("#{x.size} roasts, #{y.sum} good; temperature #{x.map(&:first).minmax.map { |v| v.round(2) }}, duration #{x.map(&:last).minmax.map { |v| v.round(2) }}")
+  normalize = CoffeeRoasting.normalization(x)
+  xn = normalize.call(x)
+  step("normalized temperature #{xn.map(&:first).minmax.map { |v| v.round(2) }}, duration #{xn.map(&:last).minmax.map { |v| v.round(2) }}")
+  xt, yt = xn * 1000, y * 1000
+  model = Sequential.new(2, [[3, :sigmoid], [1, :sigmoid]], rng: Random.new(1234))
+  model.compile(loss: :binary_crossentropy, optimizer: Adam.new(learning_rate: 0.01))
+  step("trained on #{xt.size} tiled rows; #{model.count_params} parameters")
+  model.fit(xt, yt, epochs: 10) { |epoch, loss| step("epoch #{epoch}: loss=#{loss}") }
+  trained = model.predict(xn).map(&:first)
+  step("trained-model accuracy on the 200 roasts=#{trained.zip(y).count { |p, t| (p >= 0.5 ? 1 : 0) == t } / 200.0}")
+  model.weights = [CoffeeRoasting.keras_weights(CoffeeRoasting::W1, CoffeeRoasting::B1), CoffeeRoasting.keras_weights(CoffeeRoasting::W2, CoffeeRoasting::B2)]
+  test = normalize.call([[200, 13.9], [200, 17]])
+  predictions = model.predict(test).map(&:first)
+  step("supplied weights: P(good | 200°, 13.9 min)=#{predictions[0]}; P(good | 200°, 17 min)=#{predictions[1]}")
+  raise "supplied weights must accept the first roast and reject the second" unless predictions[0] >= 0.5 && predictions[1] < 0.5
+
+  ok("the course's generated roasts, normalization, training and supplied-weight decisions")
 end

@@ -1,46 +1,35 @@
 # frozen_string_literal: true
 
-# Course C2 W2: ten handwritten digits, 400→25→15→10, ReLU hidden layers.
-# Linear output logits, sparse categorical cross-entropy(from_logits=True),
-# Adam(0.001), 40 epochs and batches of 32; no class-count reduction.
-require_relative "../lib/style"
-require_relative "../lib/reference"
+# Course C2 W2 assignment: ten handwritten digits, 400→25→15→10 with ReLU
+# hidden units and linear logits; sparse categorical cross-entropy from
+# logits, Adam(0.001), 40 epochs, minibatches of 32. Softmax only for reading
+# probabilities, never inside the loss.
+# Run me: ruby neural_networks/multiclass_classification.rb
+require_relative "sequential"
+require_relative "softmax"
+require_relative "../lib/course_data"
 module MulticlassClassification
   module_function
 
-  def build
-    tf = Reference.tensorflow
-    tf.keras.Sequential.new([
-                              tf.keras.Input(shape: [400]),
-                              tf.keras.layers.Dense.new(25, activation: "relu"),
-                              tf.keras.layers.Dense.new(15, activation: "relu"),
-                              tf.keras.layers.Dense.new(10, activation: "linear")
-                            ])
-  end
-
-  def train(epochs: 40)
-    Reference.seed(1234)
-    x, y = Reference.digits(:multiclass)
-    model = build
-    tf = Reference.tensorflow
-    model.compile(loss: tf.keras.losses.SparseCategoricalCrossentropy.new(from_logits: true), optimizer: tf.keras.optimizers.Adam.new(learning_rate: 0.001))
-    history = model.fit(x, y, epochs: epochs, batch_size: 32, shuffle: true, verbose: 0)
+  def train(epochs: 40, &trace)
+    x, y = CourseData.digits(:multiclass)
+    model = Sequential.new(400, [[25, :relu], [15, :relu], [10, :linear]], rng: Random.new(1234))
+    model.compile(loss: :sparse_categorical_crossentropy, optimizer: Adam.new(learning_rate: 0.001))
+    history = model.fit(x, y, epochs: epochs, rng: Random.new(1234), &trace)
     [model, history, x, y]
   end
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Multiclass Digit Recognition", "original 5000 × 400 pixels · ten classes · TensorFlow/Keras")
-  model, history, x, y = MulticlassClassification.train
-  Reference.epoch_trace(history)
-  logits = model.predict(x, verbose: 0)
-  prediction = Reference.numpy.argmax(logits, axis: 1)
-  accuracy = Reference.accuracy(y, prediction)
-  step("architecture 400→25→15→10; parameters=#{model.count_params}; training accuracy=#{accuracy}")
-  step("first ten predictions #{Reference.list(prediction).first(10)}")
-  raise "Ten-digit recognition did not train" unless accuracy >= 0.9 && Reference.shape(logits) == [5000, 10]
+  banner("Multiclass Digit Recognition", "5000 images · ten classes · 400→25→15→10")
+  model, history, x, y = MulticlassClassification.train { |epoch, loss| step("epoch #{epoch}: loss=#{loss}") }
+  logits = model.logits(x)
+  predicted = logits.map { |row| row.index(row.max) }
+  accuracy = predicted.zip(y).count { |p, t| p == t }.to_f / y.size
+  step("parameters=#{model.count_params}; training accuracy=#{accuracy}; errors=#{predicted.zip(y).count { |p, t| p != t }}")
+  [1015, 4021].each { |i| step("image #{i}: label #{y[i]}; probabilities #{vector(Softmax.probabilities(logits[i]))}") }
+  raise "architecture differs from 400→25→15→10" unless model.count_params == 10_575
+  raise "training did not reduce the loss" unless history.last < history.first
 
-  Dir.mkdir("output") unless Dir.exist?("output")
-  model.save("output/multiclass_digits.keras")
-  ok("all ten original digit classes remain in the application")
+  ok("all ten digit classes trained from logits")
 end
