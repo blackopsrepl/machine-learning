@@ -55,3 +55,10 @@ $(foreach file,$(DEMOS),$(eval $(call demo_target,$(file))))
 check:
 	@for file in lib/*.rb $(DEMOS); do $(RUBY) -wc "$$file" >/dev/null || exit 1; done
 	@$(MAKE) --no-print-directory all
+
+.PHONY: setup-reference
+setup-reference:
+	@test -x .reference/python/bin/python || uv venv --python 3.11 .reference/python
+	@uv pip install --python .reference/python/bin/python -r requirements-reference.txt
+	@bundle config set --local path .reference/gems
+	@bundle install

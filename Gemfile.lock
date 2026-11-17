@@ -1,0 +1,20 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    fiddle (1.1.8)
+    pycall (1.5.5)
+      fiddle (>= 1.0.0)
+
+PLATFORMS
+  ruby
+  x86_64-linux-gnu
+
+DEPENDENCIES
+  pycall (= 1.5.5)
+
+CHECKSUMS
+  fiddle (1.1.8) sha256=7fa8ee3627271497f3add5503acdbc3f40b32f610fc1cf49634f083ef3f32eee
+  pycall (1.5.5) sha256=6552170dc6723be73004fb7baf6af7f55d7eb06724d4ca18e44957444323d6e1
+
+BUNDLED WITH
+  4.0.10

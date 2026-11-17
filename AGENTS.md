@@ -8,9 +8,10 @@ Octave-only algorithms or turn the repository into a general ML framework.
 
 ## Format
 
-Match the sibling `../heuristics` laboratory: pure Ruby, zero runtime dependencies,
-one inspectable file per algorithm, a concise theory header, a tiny explanatory
-fixture and a deterministic step-by-step terminal demonstration. Share the ANSI
+Match the sibling `../heuristics` laboratory's presentation: one inspectable Ruby
+file per algorithm, a concise theory header and step-by-step terminal traces.
+Preserve the Python course's actual datasets, applications, architectures and
+training workflows. Small fixtures may supplement them, never replace them. Share the ANSI
 vocabulary and expose `make`, family targets and individual algorithm targets.
 
 Keep learning mathematics in named algorithm files, not hidden behind `lib/`.
@@ -18,13 +19,16 @@ Composed models may require those algorithm files. Guard demonstrations with
 `if __FILE__ == $PROGRAM_NAME` so requiring an implementation has no output or
 training side effects. Seed randomized demonstrations explicitly.
 
-No TensorFlow, PyTorch, scikit-learn, XGBoost bindings, downloaded models or opaque
-optimizer calls. Framework-based course models are reimplemented mathematically;
-source/data substitutions must remain explicit in the README and course map.
+Keep handwritten course algorithms in Ruby and identify them separately from the
+library-backed course examples. The latter use the actual reference libraries via
+PyCall, not narrower homemade substitutes. Use the original LunarLander-v2 simulator.
+Install external runtimes only in the ignored .reference directory. Do not smuggle
+Python helper scripts into this Ruby repository.
 
 ## Verification and commits
 
-Run the real demonstrations with `make check RUBY='ruby --disable-gems'`. Keep
+Run the real course-data demonstrations with `make check`. Exercise bounded training
+through the real Lunar Lander entry point; never count a toy environment as coverage. Keep
 numerical checks with the behavior they verify; gradient checks must compare the
 actual training implementation against independent finite differences. Validate
 coverage against the course map and the README matrix, not file counts alone.

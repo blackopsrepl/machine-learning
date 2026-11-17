@@ -1,0 +1,15 @@
+{
+  "linear": "Machine-Learning-Specialization-Coursera/C1 - Supervised Machine Learning - Regression and Classification/week2/C1W2A1",
+  "houses": "DeepLearningAI-ML_Specialization/1-Regression-Classification/week2",
+  "logistic": "DeepLearningAI-ML_Specialization/1-Regression-Classification/LogisticRegression",
+  "binary_digits": "DeepLearningAI-ML_Specialization/2-Advanced-Algorithms/MulticlassNeuralNetwork/Files/home/jovyan/work",
+  "multiclass_digits": "DeepLearningAI-ML_Specialization/2-Advanced-Algorithms/BinaryNeuralNetwork",
+  "evaluation": "DeepLearningAI-ML_Specialization/2-Advanced-Algorithms/week3",
+  "advice": "DeepLearningAI-ML_Specialization/2-Advanced-Algorithms/MachineLearningAdvice/Files/home/jovyan/work",
+  "heart": "DeepLearningAI-ML_Specialization/2-Advanced-Algorithms/week4",
+  "kmeans": "DeepLearningAI-ML_Specialization/3-Unsupervised Learning, Recommenders, Reinforcement Learning/week1/C3W1A/C3W1A1",
+  "anomaly": "DeepLearningAI-ML_Specialization/3-Unsupervised Learning, Recommenders, Reinforcement Learning/week1/C3W1A/C3W1A2",
+  "collaborative": "DeepLearningAI-ML_Specialization/3-Unsupervised Learning, Recommenders, Reinforcement Learning/week2/C3W2/C3W2A1",
+  "content": "DeepLearningAI-ML_Specialization/3-Unsupervised Learning, Recommenders, Reinforcement Learning/week2/C3W2/C3W2A2",
+  "dqn": "DeepLearningAI-ML_Specialization/3-Unsupervised Learning, Recommenders, Reinforcement Learning/week3/C3W3A1"
+}
