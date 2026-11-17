@@ -1,9 +1,8 @@
 # machine-learning
 
-The algorithms from Andrew Ng's Machine Learning Specialization, one Ruby file
-each. Every example trains on a dataset shaped like the course's and prints
-what happens as it goes: costs falling, splits chosen, clusters moving, a
-lander learning to touch down.
+Machine learning algorithms, one Ruby file each. Every example trains on a
+full-sized dataset and prints what happens as it goes: costs falling, splits
+chosen, clusters moving, a lander learning to touch down.
 
 You need Ruby 3.4 and make.
 
@@ -105,8 +104,4 @@ checks/                   random-stream and dataset checks
 
 Trained Lunar Lander weights go to `output/lunar_lander.json`, which git ignores.
 
-## Credit
-
-The problems, datasets and model settings come from the
-[Machine Learning Specialization](https://www.coursera.org/specializations/machine-learning-introduction)
-by Andrew Ng, DeepLearning.AI and Stanford Online.
+Based on Andrew Ng's Machine Learning Specialization.

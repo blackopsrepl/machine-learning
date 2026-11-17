@@ -1,7 +1,6 @@
 # Python course → runnable Ruby examples
 
-Scope: Andrew Ng / DeepLearning.AI / Stanford Online's Python Machine Learning
-Specialization. The course defines the applications, dataset shapes, model
+Scope: the Python Machine Learning Specialization. The course defines the applications, dataset shapes, model
 dimensions, preprocessing and training settings; only presentation changes to
 terminal output. Algorithms the course writes out in NumPy are handwritten
 Ruby. Algorithms it takes from scikit-learn, Keras, XGBoost or Gym/Box2D are

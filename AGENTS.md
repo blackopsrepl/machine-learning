@@ -2,7 +2,7 @@
 
 ## Scope
 
-The Python Andrew Ng Machine Learning Specialization defines the algorithm list.
+The Python Machine Learning Specialization defines the algorithm list.
 Use `docs/course-map.md` to check assignments and optional labs. Do not import
 Octave-only algorithms or turn the repository into a general ML framework.
 

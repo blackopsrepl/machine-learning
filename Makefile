@@ -1,4 +1,4 @@
-# Andrew Ng's Python Machine Learning Specialization as runnable Ruby files.
+# Machine learning algorithms as runnable Ruby files.
 RUBY ?= ruby
 GROUPS := supervised neural_networks evaluation trees unsupervised recommenders reinforcement_learning
 DEMOS := $(foreach group,$(GROUPS),$(sort $(wildcard $(group)/*.rb)))
@@ -52,7 +52,7 @@ DESC_deep_q_learning := DQN: replay, target network, ε-greedy
 .PHONY: all help list check checks handwritten ported engines data $(GROUPS) $(NAMES)
 help: list
 list:
-	@printf '\n── machine learning · Python ML Specialization in Ruby ─────────\n'
+	@printf '\n── machine learning · one Ruby file per algorithm ─────────────\n'
 	@$(foreach group,$(GROUPS),printf '\n  $(group)\n'; $(foreach file,$(filter $(group)/%,$(DEMOS)),printf '    make %-32s # %s\n' '$(basename $(notdir $(file)))' '$(DESC_$(basename $(notdir $(file))))';)) true
 	@printf '\n  make handwritten     algorithms the course writes out in NumPy\n  make ported          algorithms the course takes from a library\n  make engines         Keras-style training machinery\n  make all             every example at the course settings\n  make checks          dataset schema and NumPy/CPython random streams\n  make check           syntax, checks, then every example\n  make data            regenerate the shipped datasets\n\n'
 all: $(NAMES)

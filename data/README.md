@@ -19,7 +19,7 @@ course workflow unchanged.
 
 ## Why most files are generated
 
-The course's data files are DeepLearning.AI course material, and the movie
+The course's data files are course material, and the movie
 data derives from MovieLens, whose terms forbid redistribution without
 permission. Those files are therefore replaced by stand-ins produced by
 [`generate.rb`](generate.rb) from fixed seeds:
