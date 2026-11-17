@@ -36,11 +36,33 @@ module Backpropagation
         @biases[l].each_index { |j| @biases[l][j]=values[offset]; offset+=1 }
       end
     end
+    # Vector-Jacobian product from output LOGITS, reusing the cached forward pass.
+    # Callers supply dL/dz_out; activation/loss fusion belongs to the objective.
+    def backward(values,zs,delta)
+      gw=@weights.map { |layer| layer.map { |row| Array.new(row.size,0.0) } }
+      gb=@biases.map { |layer| Array.new(layer.size,0.0) }
+      (@weights.size-1).downto(0) do |l|
+        delta.each_index do |j|
+          gb[l][j]=delta[j]
+          gw[l][j].each_index { |k| gw[l][j][k]=delta[j]*values[l][k] }
+        end
+        next if l.zero?
+        delta=values[l].each_index.map do |k|
+          propagated=@weights[l].each_index.sum { |j| @weights[l][j][k]*delta[j] }
+          derivative=case @activations[l-1]
+                     when :sigmoid then values[l][k]*(1-values[l][k])
+                     when :relu then zs[l-1][k]>0 ? 1.0 : 0.0
+                     when :linear then 1.0
+                     end
+          propagated*derivative
+        end
+      end
+      @weights.each_index.flat_map { |l| gw[l].flatten+gb[l] }
+    end
     def gradients(x,y,loss: :binary,l2: 0.0)
       expected={binary: :sigmoid,categorical: :softmax,mse: :linear}.fetch(loss)
       raise ArgumentError,"loss/output activation mismatch" unless @activations.last==expected
-      gw=@weights.map { |layer| layer.map { |row| Array.new(row.size,0.0) } }
-      gb=@biases.map { |layer| Array.new(layer.size,0.0) }
+      gradient=Array.new(parameters.size,0.0)
       cost=0.0
       x.each_with_index do |row,i|
         values,zs=forward(row); output=values.last
@@ -49,31 +71,16 @@ module Backpropagation
         cost+=case loss
               when :binary then zs.last.zip(target).sum { |z,t| LogisticRegression.softplus(z)-t*z }
               when :categorical then Softmax.loss(zs.last,y[i])
-              when :mse then output.zip(target).sum { |p,t| (p-t)**2/2.0 }
+              when :mse then output.zip(target).sum { |pred,t| (pred-t)**2/2.0 }
               end
-        delta=output.zip(target).map { |p,t| p-t }
-        (@weights.size-1).downto(0) do |l|
-          delta.each_index do |j|
-            gb[l][j]+=delta[j]
-            gw[l][j].each_index { |k| gw[l][j][k]+=delta[j]*values[l][k] }
-          end
-          next if l.zero?
-          delta=values[l].each_index.map do |k|
-            propagated=@weights[l].each_index.sum { |j| @weights[l][j][k]*delta[j] }
-            derivative=case @activations[l-1]
-                       when :sigmoid then values[l][k]*(1-values[l][k])
-                       when :relu then zs[l-1][k]>0 ? 1.0 : 0.0
-                       when :linear then 1.0
-                       end
-            propagated*derivative
-          end
-        end
+        delta=output.zip(target).map { |pred,t| pred-t }
+        sample_gradient=backward(values,zs,delta)
+        gradient=gradient.zip(sample_gradient).map { |total,g| total+g }
       end
-      flattened=@weights.each_index.flat_map do |l|
-        gw[l].each_index.flat_map { |j| gw[l][j].each_index.map { |k| (gw[l][j][k]+l2*@weights[l][j][k]).to_f/x.size } }+gb[l].map { |v| v.to_f/x.size }
-      end
+      penalty_gradient=@weights.each_index.flat_map { |l| @weights[l].flatten.map { |w| l2*w }+Array.new(@biases[l].size,0.0) }
+      gradient=gradient.zip(penalty_gradient).map { |g,r| (g+r)/x.size }
       cost=(cost+l2*@weights.flatten.sum { |w| w*w }/2.0)/x.size
-      [cost,flattened]
+      [cost,gradient]
     end
     def fit(x,y,loss: :binary,iterations: 1000,rate: 0.1,l2: 0.0,optimizer: nil)
       iterations.times do |i|
