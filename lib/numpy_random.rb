@@ -106,6 +106,100 @@ module NumpyRandom
     end
   end
 
+  # CPython's random module: MT19937 seeded by init_by_array over the seed's
+  # 32-bit words; random() is res53; integers come from getrandbits with
+  # rejection (_randbelow), as in choice() and sample().
+  class PythonRandom < RandomState
+    def initialize(seed)
+      super(19_650_218)
+      key = []
+      value = seed.abs
+      loop do
+        key << (value & MASK32)
+        value >>= 32
+        break if value.zero?
+      end
+      init_by_array(key)
+    end
+
+    def random = random_sample
+
+    def getrandbits(k)
+      return next_uint32 >> (32 - k) if k <= 32
+
+      words = (k + 31) / 32
+      value = 0
+      words.times do |i|
+        bits = next_uint32
+        bits >>= (32 * words - k) if i == words - 1
+        value |= bits << (32 * i)
+      end
+      value
+    end
+
+    def randbelow(n)
+      k = n.bit_length
+      loop do
+        r = getrandbits(k)
+        return r if r < n
+      end
+    end
+
+    def choice(array) = array[randbelow(array.size)]
+
+    # random.sample(population, k) for sequences, including its two strategies.
+    def sample(population, k)
+      n = population.size
+      raise ArgumentError, "sample larger than population" if k > n
+
+      setsize = 21
+      setsize += 4**Math.log(3 * k, 4).ceil if k > 5
+      if n <= setsize
+        pool = Array.new(n) { |i| population[i] }
+        Array.new(k) do |i|
+          j = randbelow(n - i)
+          chosen = pool[j]
+          pool[j] = pool[n - i - 1]
+          chosen
+        end
+      else
+        selected = {}
+        Array.new(k) do
+          j = randbelow(n)
+          j = randbelow(n) while selected.key?(j)
+          selected[j] = true
+          population[j]
+        end
+      end
+    end
+
+    private
+
+    def init_by_array(key)
+      i, j = 1, 0
+      [N, key.size].max.times do
+        @mt[i] = ((@mt[i] ^ ((@mt[i - 1] ^ (@mt[i - 1] >> 30)) * 1_664_525)) + key[j] + j) & MASK32
+        i += 1
+        j += 1
+        if i >= N
+          @mt[0] = @mt[N - 1]
+          i = 1
+        end
+        j = 0 if j >= key.size
+      end
+      (N - 1).times do
+        @mt[i] = ((@mt[i] ^ ((@mt[i - 1] ^ (@mt[i - 1] >> 30)) * 1_566_083_941)) - i) & MASK32
+        i += 1
+        if i >= N
+          @mt[0] = @mt[N - 1]
+          i = 1
+        end
+      end
+      @mt[0] = 0x8000_0000
+      @index = N
+    end
+  end
+
   # SeedSequence entropy pool (pool size 4) and state generation.
   module SeedSequence
     INIT_A = 0x43b0_d7e5
