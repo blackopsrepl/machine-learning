@@ -6,6 +6,7 @@ module NumericTools
 
   def dot(a, b)
     raise ArgumentError, "vector dimensions differ" unless a.size == b.size
+
     a.zip(b).sum { |x, y| x * y }
   end
 
@@ -35,11 +36,13 @@ module NumericTools
     n.times do |column|
       pivot = (column...n).max_by { |row| a[row][column].abs }
       raise ArgumentError, "singular system" if a[pivot][column].abs < 1e-12
+
       a[column], a[pivot] = a[pivot], a[column]
       divisor = a[column][column]
       (column..n).each { |j| a[column][j] /= divisor }
       n.times do |row|
         next if row == column
+
         factor = a[row][column]
         (column..n).each { |j| a[row][j] -= factor * a[column][j] }
       end
