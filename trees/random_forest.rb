@@ -1,49 +1,47 @@
 # frozen_string_literal: true
 
-# Random forest — bootstrap rows for each tree; sample features at EACH split.
-# Average leaf probabilities, then threshold. Out-of-bag votes use only trees
-# whose bootstrap never included that row; these are not training predictions.
-# Run me: ruby trees/random_forest.rb
-require_relative "decision_tree"
+# Course tree-ensemble lab: original heart disease data, categorical one-hot
+# encoding, 80/20 split(seed 55), actual sklearn CART and RandomForestClassifier.
+# Preserve the parameter sweeps and the final 100-tree/depth-8/min-split-10 model.
+require_relative "../lib/style"
+require_relative "../lib/reference"
 module RandomForest
-  Model = Struct.new(:trees, :samples, keyword_init: true)
-
   module_function
 
-  def fit(x, y, count: 41, max_depth: 5, rng: Random.new(42))
-    features = [Math.sqrt(x[0].size).floor, 1].max
-    samples = []
-    trees = Array.new(count) do |t|
-      ids = Array.new(x.size) { rng.rand(x.size) }
-      samples << ids
-      tree = DecisionTree.fit(ids.map { |i| x[i] }, ids.map { |i| y[i] }, max_depth: max_depth, max_features: features, rng: rng)
-      yield t + 1, ids, tree if block_given?
-      tree
-    end
-    Model.new(trees: trees, samples: samples)
-  end
-
-  def probability(model, row) = NumericTools.mean(model.trees.map { |tree| DecisionTree.probability(tree, row) })
-
-  def oob(model, x)
-    x.each_index.map do |i|
-      votes = model.trees.each_index.filter_map { |t| DecisionTree.probability(model.trees[t], x[i]) unless model.samples[t].include?(i) }
-      votes.empty? ? nil : NumericTools.mean(votes)
-    end
+  def fit(x, y, count: 100, max_depth: 8, min_samples_split: 10, random_state: 55)
+    model = PyCall.import_module("sklearn.ensemble").RandomForestClassifier.new(n_estimators: count, max_depth: max_depth, min_samples_split: min_samples_split, random_state: random_state)
+    model.fit(x, y)
+    model
   end
 end
 if __FILE__ == $PROGRAM_NAME
   include Style
-  banner("Random Forest", "bootstrap rows + per-node random features · seed 42")
-  x, y = Problem.mushrooms, Problem.edible
-  model = RandomForest.fit(x, y) { |t, ids, _tree| step("tree #{t}: bootstrap row indices #{ids.inspect}") if t <= 3 }
-  predicted = x.map { |row| RandomForest.probability(model, row) >= 0.5 ? 1 : 0 }
-  predicted.each_index { |i| step(format("row %d vote p(edible)=%.4f prediction=%d target=%d", i, RandomForest.probability(model, x[i]), predicted[i], y[i])) }
-  oob = RandomForest.oob(model, x)
-  covered = oob.each_index.reject { |i| oob[i].nil? }
-  score = NumericTools.accuracy(covered.map { |i| y[i] }, covered.map { |i| oob[i] >= 0.5 ? 1 : 0 })
-  note("out-of-bag accuracy #{score.round(3)} on #{covered.size} rows; tiny data makes this noisy")
-  raise "forest failed" unless NumericTools.accuracy(y, predicted) >= 0.9 && model.samples.uniq.size > 1 && covered.size == x.size
+  banner("Heart Disease Trees and Random Forest", "original heart.csv · scikit-learn · seed 55")
+  x_train, x_test, y_train, y_test = Reference.heart_data
+  step("training #{Reference.shape(x_train).inspect}; held-out #{Reference.shape(x_test).inspect}")
+  tree_class = PyCall.import_module("sklearn.tree").DecisionTreeClassifier
+  [["min_samples_split", [2, 10, 30, 50, 100, 200, 300, 700]], ["max_depth", [1, 2, 3, 4, 8, 16, 32, 64, nil]]].each do |name, values|
+    values.each do |value|
+      model = tree_class.new(**{ name.to_sym => value, random_state: 55 })
+      model.fit(x_train, y_train)
+      step("CART #{name}=#{value.inspect}: train=#{model.score(x_train, y_train)} test=#{model.score(x_test, y_test)}")
+    end
+  end
+  tree = tree_class.new(min_samples_split: 50, max_depth: 3, random_state: 55)
+  tree.fit(x_train, y_train)
+  step("final CART: train=#{tree.score(x_train, y_train)} test=#{tree.score(x_test, y_test)}")
+  forest_class = PyCall.import_module("sklearn.ensemble").RandomForestClassifier
+  [["min_samples_split", [2, 10, 30, 50, 100, 200, 300, 700]], ["max_depth", [2, 4, 8, 16, 32, 64, nil]], ["n_estimators", [10, 50, 100, 500]]].each do |name, values|
+    values.each do |value|
+      model = forest_class.new(**{ name.to_sym => value, random_state: 55 })
+      model.fit(x_train, y_train)
+      step("forest #{name}=#{value.inspect}: train=#{model.score(x_train, y_train)} test=#{model.score(x_test, y_test)}")
+    end
+  end
+  model = RandomForest.fit(x_train, y_train)
+  score = Reference.scalar(model.score(x_test, y_test))
+  step("final forest: 100 trees, max_depth=8, min_samples_split=10; train=#{model.score(x_train, y_train)} test=#{score}")
+  raise "Heart disease forest failed" unless score >= 0.75
 
-  ok("different bootstraps and feature choices combine into a probability vote")
+  ok("the actual library estimators and course parameter sweeps are retained")
 end

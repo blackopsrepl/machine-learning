@@ -67,7 +67,7 @@ if __FILE__ == $PROGRAM_NAME
   include Style
   banner("Decision Tree", "entropy → information gain → recursive partition")
   x, y = Problem.mushrooms, Problem.edible
-  tree = DecisionTree.fit(x, y) do |event, depth, feature, threshold, gain|
+  tree = DecisionTree.fit(x, y, max_depth: 2) do |event, depth, feature, threshold, gain|
     step(format("%-9s depth=%d feature=%d ≤ %.1f information gain=%.6f", event, depth, feature, threshold, gain))
   end
   predicted = x.map { |row| DecisionTree.predict(tree, row) }
