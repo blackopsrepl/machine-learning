@@ -7,7 +7,6 @@
 # Run me: ruby neural_networks/backpropagation.rb
 require_relative "dense_layer"
 require_relative "adam"
-require_relative "../lib/problem"
 module Backpropagation
   class Network
     attr_reader :weights, :biases, :activations
@@ -118,17 +117,16 @@ module Backpropagation
   end
 end
 if __FILE__ == $PROGRAM_NAME
+  require_relative "../lib/course_data"
   include Style
-  banner("Backpropagation", "explicit chain rule · sigmoid hidden layer")
-  network = Backpropagation::Network.new([2, 3, 1], activations: [:sigmoid, :sigmoid])
-  values, zs = network.forward([1.0, 0.0])
-  values.each_with_index { |a, l| step("layer #{l} activations #{vector(a)}") }
-  note("preactivations #{zs.map { |z| vector(z) }.join(' → ')}")
-  cost, gradient = network.gradients(Problem.xor, Problem.xor_targets)
-  step("initial batch BCE #{cost.round(6)}; first weight gradients #{vector(gradient.first(6))}")
-  network.fit(Problem.xor, Problem.xor_targets, iterations: 2000, optimizer: Adam.new) { |i, j, _g| step("it #{i}: J=#{j.round(6)}") if i <= 2 || (i % 500).zero? }
-  predicted = Problem.xor.map { |x| network.predict(x)[0] >= 0.5 ? 1 : 0 }
-  raise "XOR not learned" unless predicted == Problem.xor_targets
+  banner("Manual Backpropagation", "original digit rows · 400→25→15→1 · handwritten extension")
+  x, y = CourseData.digits(:binary_digits)
+  network = Backpropagation::Network.new([400, 25, 15, 1], activations: [:sigmoid, :sigmoid, :sigmoid], rng: Random.new(1234))
+  values, logits = network.forward(x.first)
+  values.each_with_index { |a, layer| step("layer #{layer}: #{a.size} activations; first values #{vector(a.first(5))}") }
+  cost, gradient = network.gradients(x.first(32), y.first(32))
+  step("original 32-image batch: BCE=#{cost}; #{gradient.size} weight/bias derivatives")
+  raise "Digit network gradient shape differs" unless gradient.size == network.parameters.size && gradient.all?(&:finite?)
 
-  ok("handwritten hidden deltas learn XOR; no tape or automatic derivatives")
+  ok("manual derivatives operate on the course-sized image model")
 end

@@ -26,12 +26,26 @@ module DenseLayer
   end
 end
 if __FILE__ == $PROGRAM_NAME
+  require_relative "binary_classification"
   include Style
-  banner("Dense Layer", "each neuron is an inspectable dot product")
-  input, weights, bias = [1.0, 2.0], [[1.0, -1.0], [0.5, 1.0]], [0.0, -1.0]
-  output, z = DenseLayer.forward(input, weights, bias)
-  z.each_index { |j| step("neuron #{j}: #{vector(weights[j])} · #{vector(input)} + #{bias[j]} = #{z[j]}; sigmoid=#{output[j].round(6)}") }
-  raise "wrong affine transform" unless z == [-1.0, 1.5]
+  banner("Dense-Layer Inference", "original digit image and 400→25→15→1 weights · handwritten Ruby")
+  tf = Reference.tensorflow
+  model = if File.exist?("output/binary_digits.keras")
+            tf.keras.models.load_model("output/binary_digits.keras")
+          else
+            BinaryClassification.train.first
+          end
+  x, y = Reference.digits(:binary_digits)
+  row = Reference.list(x.__getitem__(0))
+  activation = row
+  model.layers.to_a.each_with_index do |layer, i|
+    weights, bias = layer.get_weights.to_a
+    activation, z = DenseLayer.forward(activation, Reference.list(weights).map(&:to_a).transpose, Reference.list(bias))
+    step("layer #{i + 1}: #{z.size} neurons; logits #{vector(z.first(5))}; activations #{vector(activation.first(5))}")
+  end
+  expected = model.predict(Reference.rows(x, 0, 1), verbose: 0).__getitem__(0).__getitem__(0).item
+  step("Ruby probability=#{activation.first}; Keras probability=#{expected}; label=#{y.__getitem__(0)}")
+  raise "Original layer weights were not applied correctly" unless (activation.first - expected).abs < 1e-6
 
-  ok("composition needs only weights, biases and an activation")
+  ok("the NumPy-style forward pass is preserved in Ruby on the real digit input")
 end
