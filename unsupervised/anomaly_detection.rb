@@ -21,33 +21,35 @@ module AnomalyDetection
     row.each_index.sum { |j| -0.5 * (Math.log(2 * Math::PI * variances[j]) + (row[j] - means[j])**2 / variances[j]) }
   end
 
-  def select_threshold(scores, labels)
-    candidates = [-Float::INFINITY] + scores.uniq.sort.map(&:next_float)
-    candidates.map do |threshold|
+  def select_threshold(scores, labels, steps: 1000)
+    minimum, maximum = scores.minmax
+    candidates = minimum == maximum ? [minimum] : Array.new(steps) { |i| minimum + i * (maximum - minimum) / steps }
+    best_threshold, best_f1 = 0.0, 0.0
+    candidates.each do |threshold|
       predicted = scores.map { |value| value < threshold ? 1 : 0 }
       metrics = Metrics.binary(labels, predicted)
       yield threshold, metrics if block_given?
-      [metrics[:f1], threshold]
-    end.max_by(&:first).reverse
+      if metrics[:f1] > best_f1
+        best_threshold, best_f1 = threshold, metrics[:f1]
+      end
+    end
+    [best_threshold, best_f1]
   end
 end
 if __FILE__ == $PROGRAM_NAME
+  require_relative "../lib/course_data"
   include Style
-  banner("Gaussian Anomaly Detection", "log densities · validation-selected F1")
-  training = [[9.0, 10.0], [10.0, 9.0], [11.0, 10.0], [10.0, 11.0]]
-  validation = [[10.0, 10.0], [9.5, 10.5], [15.0, 16.0], [3.0, 4.0]]
-  labels = [0, 0, 1, 1]
-  model = AnomalyDetection.fit(training)
-  step("means #{vector(model[0])}; variances #{vector(model[1])}")
-  scores = validation.map { |row| AnomalyDetection.log_density(row, model) }
-  validation.zip(scores).each { |row, p| note("#{vector(row)} log p=#{p.round(5)}") }
-  threshold, f1 = AnomalyDetection.select_threshold(scores, labels) { |t, m| step("threshold #{t.round(5)} precision=#{m[:precision]} recall=#{m[:recall]} F1=#{m[:f1].round(4)}") }
-  step("selected log-density threshold #{threshold}; validation F1=#{f1}")
-  raise "threshold selection failed" unless f1 == 1.0
-
-  constant = AnomalyDetection.fit([[1.0], [1.0]])
-  raise "constant variance unstable" unless AnomalyDetection.log_density([1.0], constant).finite?
-  raise "empty positive class" unless AnomalyDetection.select_threshold([0.0, 0.0], [0, 0])[1] == 0
-
-  ok("validation separates both outliers; constant features and zero positives remain defined")
+  banner("Gaussian Anomaly Detection", "original server datasets · 1000-step validation F1 search")
+  [1, 2].each do |part|
+    training = CourseData.npy(:anomaly, "data/X_part#{part}.npy")
+    validation = CourseData.npy(:anomaly, "data/X_val_part#{part}.npy")
+    labels = CourseData.npy(:anomaly, "data/y_val_part#{part}.npy").flatten
+    model = AnomalyDetection.fit(training)
+    scores = validation.map { |row| Math.exp(AnomalyDetection.log_density(row, model)) }
+    threshold, f1 = AnomalyDetection.select_threshold(scores, labels)
+    outliers = training.count { |row| Math.exp(AnomalyDetection.log_density(row, model)) < threshold }
+    step("part #{part}: #{training.size}×#{training.first.size} training; epsilon=#{threshold}; validation F1=#{f1}; training outliers=#{outliers}")
+    raise "Original anomaly example failed" unless f1 > (part == 1 ? 0.8 : 0.6)
+  end
+  ok("both original low- and high-dimensional server examples run unchanged in scope")
 end

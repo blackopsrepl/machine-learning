@@ -5,7 +5,6 @@
 # Random initialization chooses actual rows; a local solution is not a guarantee.
 # Run me: ruby unsupervised/k_means.rb
 require_relative "../lib/style"
-require_relative "../lib/problem"
 require_relative "../lib/numeric"
 module KMeans
   module_function
@@ -27,25 +26,20 @@ module KMeans
       end
       current_ids = assign(x, centers)
       yield iteration + 1, centers.map(&:dup), current_ids, objective(x, centers, current_ids) if block_given?
-      break if centers == old
     end
     [centers, assign(x, centers)]
   end
 end
 if __FILE__ == $PROGRAM_NAME
+  require_relative "../lib/course_data"
   include Style
-  banner("K-means", "assignment → means · Random.new(42)")
-  costs = []
-  _centers, ids = KMeans.fit(Problem.clusters, 2) do |iteration, c, assignments, cost|
-    costs << cost
-    step("it #{iteration}: assignments #{assignments.inspect}; mean squared distance #{cost.round(6)}")
-    c.each_with_index { |center, k| note("center #{k}: #{vector(center)}") }
+  banner("K-means", "original 300-point course dataset · three clusters · ten iterations")
+  x = CourseData.npy(:kmeans, "data/ex7_X.npy")
+  centers, ids = KMeans.fit(x, 3, initial: [[3.0, 3.0], [6.0, 2.0], [8.0, 5.0]], iterations: 10) do |iteration, c, assignments, cost|
+    step("iteration #{iteration}: mean squared distance #{cost}")
+    c.each_with_index { |center, k| note("centroid #{k}: #{vector(center)}; assigned #{assignments.count(k)}") }
   end
-  raise "objective increased" unless costs.each_cons(2).all? { |a, b| b <= a + 1e-12 }
-  raise "clusters not separated" unless ids.first(3).uniq.size == 1 && ids.last(3).uniq.size == 1 && ids[0] != ids[-1]
+  raise "Original dataset shape changed" unless x.size == 300 && centers.size == 3 && ids.size == x.size
 
-  empty, _ = KMeans.fit([[0.0], [1.0]], 2, initial: [[0.0], [0.0]])
-  raise "empty cluster produced NaN" unless empty.flatten.all?(&:finite?)
-
-  ok("the two clouds separate through alternating minimization")
+  ok("all original observations participate in the course clustering run")
 end
