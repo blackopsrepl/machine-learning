@@ -27,5 +27,5 @@ if __FILE__ == $PROGRAM_NAME
   step("#{raw.size} microchips; #{w.size} mapped features plus bias; training accuracy #{accuracy}")
   raise "Microchip classifier failed" unless accuracy >= 0.75
 
-  ok("sixth-degree model fitted to the original test measurements")
+  ok("sixth-degree model fitted to the course test measurements")
 end

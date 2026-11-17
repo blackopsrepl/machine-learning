@@ -56,5 +56,5 @@ if __FILE__ == $PROGRAM_NAME
   step("training accuracy #{accuracy}; boundary #{w[0]}*exam1 + #{w[1]}*exam2 + #{b} = 0")
   raise "Admissions model failed" unless accuracy >= 0.85
 
-  ok("trained on all #{x.size} original admissions records")
+  ok("trained on all #{x.size} admissions records")
 end

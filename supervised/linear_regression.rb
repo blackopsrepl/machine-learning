@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Linear regression — y_hat=w·x+b, half mean squared error and simultaneous
-# batch-gradient updates. The demonstration uses the original 97 restaurant
+# batch-gradient updates. The demonstration uses the course's 97 restaurant
 # population/profit observations, alpha .01 and 1500 iterations.
 require_relative "../lib/style"
 require_relative "../lib/numeric"
@@ -46,5 +46,5 @@ if __FILE__ == $PROGRAM_NAME
   [3.5, 7.0].each { |population| step("population #{population * 10_000}: predicted profit $#{(LinearRegression.predict([population], w, b) * 10_000).round(2)}") }
   raise "gradient descent increased the cost" unless costs.each_cons(2).all? { |a, c| c <= a + 1e-12 }
 
-  ok("trained on all #{x.size} original observations")
+  ok("trained on all #{x.size} observations")
 end

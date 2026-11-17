@@ -23,5 +23,5 @@ if __FILE__ == $PROGRAM_NAME
   step("normalized weights #{vector(w)} bias #{b}; cost #{LinearRegression.loss(scaled, y, w, b)}")
   raise "Housing normalization failed" unless w.all?(&:finite?) && LinearRegression.loss(scaled, y, w, b) < 1000
 
-  ok("the original housing columns share one fitted training coordinate system")
+  ok("the course housing columns share one fitted training coordinate system")
 end

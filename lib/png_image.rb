@@ -2,7 +2,7 @@
 
 require "zlib"
 
-# Lossless RGB/RGBA PNG reading/writing for the original bird_small image.
+# Lossless RGB/RGBA PNG reading/writing for the course bird_small image.
 module PNGImage
   module_function
 

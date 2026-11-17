@@ -9,7 +9,7 @@ require_relative "logistic_regression"
 if __FILE__ == $PROGRAM_NAME
   require_relative "../lib/course_data"
   include Style
-  banner("Regularization", "original housing and microchip data · handwritten L2 objectives")
+  banner("Regularization", "course housing and microchip data · handwritten L2 objectives")
   rows = CourseData.table(:houses, "data/houses.txt", skip: 1)
   x = rows.map { |r| r.first(4) }
   y = rows.map(&:last)
@@ -25,5 +25,5 @@ if __FILE__ == $PROGRAM_NAME
     w, b = LogisticRegression.fit(expanded, labels, iterations: 1000, rate: 0.01, l2: lambda)
     step("microchip lambda=#{lambda}: objective=#{LogisticRegression.loss(expanded, labels, w, b, l2: lambda)}")
   end
-  ok("linear and logistic penalties operate on the original feature matrices")
+  ok("linear and logistic penalties operate on the course feature matrices")
 end
