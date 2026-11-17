@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 # The same small ANSI vocabulary as heuristics: no gems, no terminal framework.
+# Long training runs stream their traces instead of buffering them.
+$stdout.sync = true
+
 module Style
   module_function
 
